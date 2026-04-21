@@ -5,9 +5,12 @@ import { Sidebar } from './components/Sidebar'
 import { ChatPanel } from './components/ChatPanel'
 import { PreviewPanel } from './components/PreviewPanel'
 import { SettingsModal } from './components/SettingsModal'
+import { GuideTour, DEFAULT_TOUR_STEPS } from './components/GuideTour'
 import { getSessions, getWorkspace, getConfig, createSession } from './api'
 import type { WorkspaceFile, Config, SessionMeta } from './api'
 import './App.css'
+
+const TOUR_DONE_KEY = 'coda_tour_done'
 
 export interface Message {
   id: string
@@ -22,7 +25,6 @@ export interface Message {
   isLoading?: boolean
 }
 
-// 每个会话的运行时状态（消息历史 + 文件列表）
 interface SessionState {
   messages: Message[]
   files: WorkspaceFile[]
@@ -42,25 +44,22 @@ const PREVIEW_DEFAULT_WIDTH = 420
 function App() {
   const [sessions, setSessions] = useState<SessionMeta[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
-  // 每个会话的状态：{ [sessionId]: SessionState }
   const [sessionStates, setSessionStates] = useState<Record<string, SessionState>>({})
   const [config, setConfig] = useState<Config | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [previewFile, setPreviewFile] = useState<WorkspaceFile | null>(null)
+  const [showTour, setShowTour] = useState(false)
 
-  // 预览面板宽度（可拖拽）
   const [previewWidth, setPreviewWidth] = useState(PREVIEW_DEFAULT_WIDTH)
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
 
-  // ---- 获取当前会话的状态 ----
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null
   const activeState = activeSessionId ? sessionStates[activeSessionId] : null
   const currentMessages = activeState?.messages ?? []
   const currentFiles = activeState?.files ?? []
 
-  // ---- 初始化：加载会话列表 ----
   const refreshSessions = useCallback(async () => {
     try {
       const { sessions: list } = await getSessions()
@@ -84,7 +83,6 @@ function App() {
     }
   }, [])
 
-  // ---- 刷新指定会话的工作区文件 ----
   const refreshWorkspace = useCallback(async (sessionId: string) => {
     try {
       const info = await getWorkspace(sessionId)
@@ -100,12 +98,9 @@ function App() {
     }
   }, [])
 
-  // ---- 切换会话 ----
   const handleSelectSession = useCallback(async (sessionId: string) => {
     setActiveSessionId(sessionId)
     setPreviewFile(null)
-
-    // 如果该会话还没有状态，初始化
     setSessionStates(prev => {
       if (prev[sessionId]) return prev
       const session = sessions.find(s => s.id === sessionId)
@@ -117,12 +112,9 @@ function App() {
         }
       }
     })
-
-    // 加载该会话的工作区文件
     await refreshWorkspace(sessionId)
   }, [sessions, refreshWorkspace])
 
-  // ---- 更新当前会话的消息 ----
   const setCurrentMessages = useCallback((
     updater: React.SetStateAction<Message[]>
   ) => {
@@ -147,11 +139,9 @@ function App() {
       const list = await refreshSessions()
 
       if (list.length === 0) {
-        // 没有会话，自动创建第一个
         try {
           const newSession = await createSession('默认会话')
-          const newList = [newSession]
-          setSessions(newList)
+          setSessions([newSession])
           const sid = newSession.id
           setActiveSessionId(sid)
           setSessionStates({
@@ -165,7 +155,6 @@ function App() {
           console.error('创建默认会话失败', e)
         }
       } else {
-        // 选中第一个会话
         const first = list[0]
         setActiveSessionId(first.id)
         setSessionStates({
@@ -176,18 +165,21 @@ function App() {
         })
         await refreshWorkspace(first.id)
       }
+
+      // 首次使用自动触发引导（延迟 800ms 等待 UI 渲染完成）
+      if (!localStorage.getItem(TOUR_DONE_KEY)) {
+        setTimeout(() => setShowTour(true), 800)
+      }
     }
     init()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ---- 定时刷新当前会话工作区 ----
   useEffect(() => {
     if (!activeSessionId) return
     const timer = setInterval(() => refreshWorkspace(activeSessionId), 30000)
     return () => clearInterval(timer)
   }, [activeSessionId, refreshWorkspace])
 
-  // ---- 拖拽分隔条逻辑 ----
   const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     isDragging.current = true
@@ -221,10 +213,8 @@ function App() {
     }
   }, [])
 
-  // ---- 会话列表刷新后，同步 sessions 到 handleSelectSession 的闭包 ----
   const handleSessionsChange = useCallback(async () => {
     const list = await refreshSessions()
-    // 如果当前会话被删除，切换到第一个
     if (activeSessionId && !list.find(s => s.id === activeSessionId)) {
       if (list.length > 0) {
         await handleSelectSession(list[0].id)
@@ -234,7 +224,20 @@ function App() {
     }
   }, [activeSessionId, refreshSessions, handleSelectSession])
 
-  // 无会话时的空状态
+  const handleTourFinish = () => {
+    localStorage.setItem(TOUR_DONE_KEY, '1')
+    setShowTour(false)
+  }
+
+  const handleTourSkip = () => {
+    localStorage.setItem(TOUR_DONE_KEY, '1')
+    setShowTour(false)
+  }
+
+  const handleStartTour = () => {
+    setShowTour(true)
+  }
+
   if (sessions.length === 0 && activeSessionId === null) {
     return (
       <div className="app-layout">
@@ -248,7 +251,6 @@ function App() {
 
   return (
     <div className="app-layout">
-      {/* Sonner Toast 通知 */}
       <Toaster
         position="bottom-right"
         toastOptions={{
@@ -268,23 +270,22 @@ function App() {
         onSelectSession={handleSelectSession}
         onSessionsChange={handleSessionsChange}
         onOpenSettings={() => setShowSettings(true)}
+        onStartTour={handleStartTour}
         config={config}
       />
 
-      {/* 左侧：工作区文件管理（当前会话） */}
+      {/* 左侧：工作区文件管理 */}
       {activeSessionId && (
         <Sidebar
           sessionId={activeSessionId}
           files={currentFiles}
           selectedFile={previewFile}
-          onSelectFile={(f) => {
-            setPreviewFile(f)
-          }}
+          onSelectFile={(f) => setPreviewFile(f)}
           onRefresh={() => refreshWorkspace(activeSessionId)}
         />
       )}
 
-      {/* 中间：AI 对话（当前会话） */}
+      {/* 中间：AI 对话 */}
       {activeSessionId && activeSession ? (
         <ChatPanel
           sessionId={activeSessionId}
@@ -302,7 +303,7 @@ function App() {
         </main>
       )}
 
-      {/* 拖拽分隔条（仅在预览面板显示时出现） */}
+      {/* 拖拽分隔条 */}
       {previewFile && (
         <div
           className="preview-divider"
@@ -325,6 +326,15 @@ function App() {
           config={config}
           onClose={() => setShowSettings(false)}
           onSaved={refreshConfig}
+        />
+      )}
+
+      {/* 引导 Tour */}
+      {showTour && (
+        <GuideTour
+          steps={DEFAULT_TOUR_STEPS}
+          onFinish={handleTourFinish}
+          onSkip={handleTourSkip}
         />
       )}
     </div>

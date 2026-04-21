@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { toast } from 'sonner'
-import { Plus, Trash2, Settings, CheckCircle, AlertTriangle, MessageSquare, Pencil, Check, X } from 'lucide-react'
+import {
+  Plus, Trash2, CheckCircle, AlertTriangle,
+  MessageSquare, Pencil, Check, X,
+  Settings, HelpCircle, Bot,
+} from 'lucide-react'
 import type { SessionMeta, Config } from '../api'
 import { createSession, deleteSession, renameSession } from '../api'
 
@@ -10,6 +14,7 @@ interface Props {
   onSelectSession: (id: string) => void
   onSessionsChange: () => void
   onOpenSettings: () => void
+  onStartTour: () => void
   config: Config | null
 }
 
@@ -19,6 +24,7 @@ export function SessionSidebar({
   onSelectSession,
   onSessionsChange,
   onOpenSettings,
+  onStartTour,
   config,
 }: Props) {
   const [creating, setCreating] = useState(false)
@@ -40,7 +46,6 @@ export function SessionSidebar({
       const session = await createSession('新会话')
       onSessionsChange()
       onSelectSession(session.id)
-      // 创建后立即进入重命名模式
       setEditingId(session.id)
       setEditingName(session.name)
     } catch {
@@ -57,7 +62,6 @@ export function SessionSidebar({
       await deleteSession(session.id)
       toast.success(`已删除会话「${session.name}」`)
       onSessionsChange()
-      // 如果删除的是当前会话，切换到第一个
       if (activeSessionId === session.id) {
         const remaining = sessions.filter(s => s.id !== session.id)
         if (remaining.length > 0) {
@@ -115,20 +119,7 @@ export function SessionSidebar({
           <img src="/icon.png" alt="Coda" className="sidebar-logo" />
           <span>Coda</span>
         </div>
-        <button className="icon-btn" onClick={onOpenSettings} title="设置">
-          <Settings size={15} strokeWidth={1.5} />
-        </button>
       </div>
-
-      {/* API Key 状态 */}
-      {config && (
-        <div className={`api-status ${config.has_api_key ? 'ok' : 'warn'}`}>
-          {config.has_api_key
-            ? <><CheckCircle size={12} strokeWidth={2} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />AI 已连接</>
-            : <><AlertTriangle size={12} strokeWidth={2} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />未配置 API Key</>
-          }
-        </div>
-      )}
 
       {/* 新建会话按钮 */}
       <div className="session-new-btn-wrap">
@@ -209,6 +200,39 @@ export function SessionSidebar({
             )}
           </div>
         ))}
+      </div>
+
+      {/* 底部用户中心 */}
+      <div className="sidebar-user-center">
+        {/* API Key 状态指示 */}
+        <div className={`user-center-status ${config?.has_api_key ? 'ok' : 'warn'}`}>
+          <Bot size={14} strokeWidth={1.5} />
+          <span>{config?.has_api_key ? 'AI 已连接' : '未配置 API Key'}</span>
+          {config?.has_api_key
+            ? <CheckCircle size={12} strokeWidth={2} className="status-icon ok" />
+            : <AlertTriangle size={12} strokeWidth={2} className="status-icon warn" />
+          }
+        </div>
+
+        {/* 操作按钮行 */}
+        <div className="user-center-actions">
+          <button
+            className="user-center-btn"
+            onClick={onStartTour}
+            title="使用引导"
+          >
+            <HelpCircle size={15} strokeWidth={1.5} />
+            <span>使用引导</span>
+          </button>
+          <button
+            className="user-center-btn"
+            onClick={onOpenSettings}
+            title="设置"
+          >
+            <Settings size={15} strokeWidth={1.5} />
+            <span>设置</span>
+          </button>
+        </div>
       </div>
     </aside>
   )
