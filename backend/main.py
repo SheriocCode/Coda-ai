@@ -1,6 +1,7 @@
 """
 AI 驱动的 Excel/Word 处理工具 - 后端服务
 多会话版：每个会话拥有独立的工作区目录
+Agent 循环版：AI 可自主决定"思考-行动-观察"多轮迭代
 """
 
 import os
@@ -12,8 +13,9 @@ import shutil
 import traceback
 import subprocess
 import tempfile
+import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, AsyncGenerator
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -21,7 +23,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from openai import OpenAI
 
@@ -43,6 +45,9 @@ SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 # 会话元数据文件
 SESSIONS_META_FILE = BASE_DIR / "sessions.json"
 
+# Agent 最大迭代轮次
+AGENT_MAX_ITERATIONS = 10
+
 # AI 客户端（从环境变量读取 key）
 def get_ai_client():
     api_key = os.environ.get("ARK_API_KEY", "")
@@ -56,7 +61,7 @@ def get_ai_client():
         raise ValueError("ARK_MODEL environment variable is required")
     return OpenAI(api_key=api_key, base_url=base_url), model
 
-app = FastAPI(title="AI Excel Helper", version="2.0.0")
+app = FastAPI(title="AI Excel Helper", version="3.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -75,6 +80,11 @@ class ExecuteRequest(BaseModel):
     code: Optional[str] = None  # 可选：直接执行的代码（用于重试）
     context: Optional[dict] = None  # 工作区上下文
     history: Optional[list] = None  # 对话历史
+
+class AgentRunRequest(BaseModel):
+    instruction: str          # 用户自然语言指令
+    session_id: str           # 会话ID
+    history: Optional[list] = None  # 对话历史（多轮对话上下文）
 
 class ExecuteResponse(BaseModel):
     code: str
@@ -178,8 +188,69 @@ def get_file_preview(file_path: Path, max_rows: int = 5) -> str:
     return ""
 
 
+def build_agent_system_prompt(workspace_info: dict) -> str:
+    """构建 Agent 系统提示词（支持多轮思考-行动-观察）"""
+    files_desc = "\n".join(
+        f"  - {f['path']} ({f['ext']}, {f['size']} bytes)"
+        for f in workspace_info.get("files", [])
+    )
+    workspace_abs = workspace_info.get("workspace_dir", "workspace")
+
+    return f"""你是一个专业的 Python 数据处理 Agent，擅长使用 openpyxl、pandas、python-docx 等库处理 Excel 和 Word 文件。
+
+## 工作区信息
+工作区绝对路径: {workspace_abs}
+当前文件列表:
+{files_desc if files_desc else "  （空）"}
+
+## 你的工作方式
+你采用"思考-行动-观察"的迭代方式完成任务，而不是一次性生成所有代码：
+1. **思考（Thought）**：分析当前情况，决定下一步做什么
+2. **行动（Action）**：生成一小段 Python 代码来探索数据或执行操作
+3. **观察（Observation）**：查看代码执行结果，决定是否继续
+
+## 输出格式（严格遵守）
+每次回复必须是以下 JSON 格式之一：
+
+**继续执行（需要运行代码）：**
+```json
+{{
+  "thought": "我的思考过程...",
+  "action": "run_code",
+  "code": "# Python 代码\\nprint('hello')",
+  "description": "这段代码的简短描述"
+}}
+```
+
+**任务完成（不需要再运行代码）：**
+```json
+{{
+  "thought": "任务已完成，总结...",
+  "action": "finish",
+  "summary": "向用户展示的最终结果摘要"
+}}
+```
+
+## 重要规则
+1. **每次只生成一小段代码**，先探索数据，再处理，再保存
+2. 所有文件路径必须使用绝对路径，工作区根目录为: {workspace_abs}
+3. 输出文件统一保存到: {workspace_abs}/output/ 目录
+4. 使用 print() 输出信息，让观察结果更清晰
+5. 遇到错误要用 try/except 捕获并打印详细错误信息
+6. 可用的库: pandas, openpyxl, python-docx (docx), os, sys, pathlib, json, re, datetime, collections 等标准库
+7. **只输出 JSON**，不要有任何额外文字
+
+## 典型工作流程示例
+用户要求"分析 Excel 数据并生成报告"时：
+- 第1步：先读取文件，查看列名和前几行（探索）
+- 第2步：根据观察结果，进行数据统计分析（分析）
+- 第3步：生成最终报告文件（输出）
+- 第4步：finish，告知用户结果
+"""
+
+
 def build_system_prompt(workspace_info: dict) -> str:
-    """构建系统提示词"""
+    """构建系统提示词（兼容旧接口）"""
     files_desc = "\n".join(
         f"  - {f['path']} ({f['ext']}, {f['size']} bytes)"
         for f in workspace_info.get("files", [])
@@ -268,6 +339,35 @@ def extract_code(raw: str) -> str:
     return raw.strip()
 
 
+def extract_json_from_response(raw: str) -> dict:
+    """从 AI 返回的文本中提取 JSON"""
+    # 尝试直接解析
+    try:
+        return json.loads(raw.strip())
+    except Exception:
+        pass
+    
+    # 尝试从 markdown 代码块中提取
+    pattern = r"```(?:json)?\s*\n?([\s\S]*?)```"
+    matches = re.findall(pattern, raw)
+    for m in matches:
+        try:
+            return json.loads(m.strip())
+        except Exception:
+            continue
+    
+    # 尝试找到第一个 { 到最后一个 } 之间的内容
+    start = raw.find('{')
+    end = raw.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(raw[start:end+1])
+        except Exception:
+            pass
+    
+    raise ValueError(f"无法从 AI 响应中提取 JSON: {raw[:200]}")
+
+
 def get_output_files_after(session_id: str, before_files: set) -> list:
     """获取执行后新增的输出文件"""
     output_dir = get_session_output_dir(session_id)
@@ -278,6 +378,204 @@ def get_output_files_after(session_id: str, before_files: set) -> list:
             current_files.add(str(f.relative_to(workspace_dir).as_posix()))
     new_files = current_files - before_files
     return sorted(new_files)
+
+
+def sse_event(event_type: str, data: dict) -> str:
+    """构建 SSE 事件字符串"""
+    payload = json.dumps(data, ensure_ascii=False)
+    return f"event: {event_type}\ndata: {payload}\n\n"
+
+
+# ============================================================
+# Agent 循环核心逻辑
+# ============================================================
+async def run_agent_loop(
+    session_id: str,
+    instruction: str,
+    history: list,
+    workspace_info: dict,
+) -> AsyncGenerator[str, None]:
+    """
+    Agent 循环：思考 → 行动（执行代码）→ 观察 → 循环
+    通过 SSE 流式推送每一步的状态
+    """
+    client, model = get_ai_client()
+    system_prompt = build_agent_system_prompt(workspace_info)
+    
+    # 记录执行前的输出文件集合
+    output_dir = get_session_output_dir(session_id)
+    workspace_dir = get_session_dir(session_id)
+    before_files: set = set()
+    for f in output_dir.rglob("*"):
+        if f.is_file():
+            before_files.add(str(f.relative_to(workspace_dir).as_posix()))
+    
+    # 构建消息列表
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    # 加入历史对话（最近10条）
+    if history:
+        messages.extend(history[-10:])
+    
+    # 加入当前用户指令
+    messages.append({"role": "user", "content": instruction})
+    
+    iteration = 0
+    all_output_files: list = []
+    
+    yield sse_event("start", {
+        "message": "Agent 开始工作...",
+        "iteration": 0,
+        "max_iterations": AGENT_MAX_ITERATIONS
+    })
+    
+    while iteration < AGENT_MAX_ITERATIONS:
+        iteration += 1
+        
+        yield sse_event("thinking", {
+            "message": f"第 {iteration} 轮思考中...",
+            "iteration": iteration
+        })
+        
+        # 调用 AI
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.1,
+            )
+            raw = response.choices[0].message.content.strip()
+            print(f"\n{'='*60}")
+            print(f"[Agent 第{iteration}轮 AI 原始输出]")
+            print(raw)
+            print('='*60)
+        except Exception as e:
+            yield sse_event("error", {
+                "message": f"AI 调用失败: {e}",
+                "iteration": iteration
+            })
+            return
+        
+        # 解析 AI 响应
+        try:
+            agent_response = extract_json_from_response(raw)
+        except ValueError as e:
+            yield sse_event("error", {
+                "message": f"AI 响应格式错误: {e}",
+                "raw": raw[:500],
+                "iteration": iteration
+            })
+            return
+        
+        thought = agent_response.get("thought", "")
+        action = agent_response.get("action", "")
+        
+        # 推送思考内容
+        if thought:
+            yield sse_event("thought", {
+                "content": thought,
+                "iteration": iteration
+            })
+        
+        # 处理 finish 动作
+        if action == "finish":
+            summary = agent_response.get("summary", "任务已完成")
+            new_files = get_output_files_after(session_id, before_files)
+            all_output_files.extend(f for f in new_files if f not in all_output_files)
+            
+            yield sse_event("finish", {
+                "summary": summary,
+                "output_files": all_output_files,
+                "iteration": iteration
+            })
+            
+            # 更新会话时间
+            _update_session_time(session_id)
+            return
+        
+        # 处理 run_code 动作
+        if action == "run_code":
+            code = agent_response.get("code", "")
+            description = agent_response.get("description", "执行代码")
+            
+            if not code.strip():
+                yield sse_event("error", {
+                    "message": "AI 返回了空代码",
+                    "iteration": iteration
+                })
+                return
+            
+            yield sse_event("action", {
+                "description": description,
+                "code": code,
+                "iteration": iteration
+            })
+            
+            # 执行代码（在线程池中运行，避免阻塞事件循环）
+            loop = asyncio.get_event_loop()
+            stdout, stderr, success = await loop.run_in_executor(
+                None, execute_python_code, code
+            )
+            
+            # 检查新生成的文件
+            new_files = get_output_files_after(session_id, before_files)
+            step_new_files = [f for f in new_files if f not in all_output_files]
+            all_output_files.extend(step_new_files)
+            
+            yield sse_event("observation", {
+                "stdout": stdout,
+                "stderr": stderr,
+                "success": success,
+                "new_files": step_new_files,
+                "iteration": iteration
+            })
+            
+            # 将执行结果加入消息历史，供下一轮 AI 参考
+            # AI 的回复
+            messages.append({"role": "assistant", "content": raw})
+            
+            # 构建观察结果消息
+            obs_parts = []
+            if stdout:
+                obs_parts.append(f"执行输出:\n{stdout}")
+            if stderr:
+                obs_parts.append(f"错误信息:\n{stderr}")
+            if not stdout and not stderr:
+                obs_parts.append("代码执行完成，无输出")
+            if step_new_files:
+                obs_parts.append(f"新生成的文件: {', '.join(step_new_files)}")
+            obs_parts.append(f"执行状态: {'成功' if success else '失败'}")
+            
+            observation_content = "\n\n".join(obs_parts)
+            messages.append({"role": "user", "content": f"[观察结果]\n{observation_content}\n\n请继续下一步。"})
+            
+            continue
+        
+        # 未知动作
+        yield sse_event("error", {
+            "message": f"未知的 action 类型: {action}",
+            "iteration": iteration
+        })
+        return
+    
+    # 超过最大迭代次数
+    yield sse_event("finish", {
+        "summary": f"已达到最大迭代次数（{AGENT_MAX_ITERATIONS}轮），任务可能未完全完成。",
+        "output_files": all_output_files,
+        "iteration": iteration,
+        "max_reached": True
+    })
+    _update_session_time(session_id)
+
+
+def _update_session_time(session_id: str):
+    """更新会话的 updated_at 时间"""
+    sessions = load_sessions_meta()
+    for s in sessions:
+        if s["id"] == session_id:
+            s["updated_at"] = datetime.now().isoformat()
+            break
+    save_sessions_meta(sessions)
 
 
 # ============================================================
@@ -571,13 +869,61 @@ def download_file(session_id: str, filepath: str):
 
 
 # ============================================================
-# API 路由 - AI 执行
+# API 路由 - Agent 循环（新接口，SSE 流式）
+# ============================================================
+
+@app.post("/api/agent/run")
+async def agent_run(req: AgentRunRequest):
+    """
+    Agent 循环接口：AI 自主决定"思考-行动-观察"多轮迭代
+    使用 SSE（Server-Sent Events）流式推送每一步状态
+    """
+    ensure_session_exists(req.session_id)
+    
+    if not os.environ.get("ARK_API_KEY"):
+        raise HTTPException(status_code=400, detail="未配置 API Key")
+    
+    workspace_info = get_workspace_info(req.session_id)
+    history = req.history or []
+    
+    async def event_generator():
+        try:
+            async for event in run_agent_loop(
+                session_id=req.session_id,
+                instruction=req.instruction,
+                history=history,
+                workspace_info=workspace_info,
+            ):
+                yield event
+                # 让出控制权，避免阻塞
+                await asyncio.sleep(0)
+        except Exception as e:
+            tb = traceback.format_exc()
+            print(f"[Agent Error] {tb}")
+            yield sse_event("error", {
+                "message": f"Agent 运行异常: {e}",
+                "traceback": tb
+            })
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+# ============================================================
+# API 路由 - AI 执行（旧接口，保留兼容）
 # ============================================================
 
 @app.post("/api/execute")
 async def execute(req: ExecuteRequest):
     """
-    核心接口：
+    核心接口（旧版，保留兼容）：
     1. 如果提供了 code，直接执行
     2. 否则调用 AI 生成代码再执行
     """
@@ -632,12 +978,7 @@ async def execute(req: ExecuteRequest):
     new_files = get_output_files_after(req.session_id, before_files)
     
     # 更新会话的 updated_at
-    sessions = load_sessions_meta()
-    for s in sessions:
-        if s["id"] == req.session_id:
-            s["updated_at"] = datetime.now().isoformat()
-            break
-    save_sessions_meta(sessions)
+    _update_session_time(req.session_id)
     
     return ExecuteResponse(
         code=code,

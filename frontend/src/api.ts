@@ -60,6 +60,76 @@ export interface SessionMeta {
   updated_at: string
 }
 
+// ---- Agent 事件类型定义 ----
+export type AgentEventType =
+  | 'start'
+  | 'thinking'
+  | 'thought'
+  | 'action'
+  | 'observation'
+  | 'finish'
+  | 'error'
+
+export interface AgentStartEvent {
+  type: 'start'
+  message: string
+  iteration: number
+  max_iterations: number
+}
+
+export interface AgentThinkingEvent {
+  type: 'thinking'
+  message: string
+  iteration: number
+}
+
+export interface AgentThoughtEvent {
+  type: 'thought'
+  content: string
+  iteration: number
+}
+
+export interface AgentActionEvent {
+  type: 'action'
+  description: string
+  code: string
+  iteration: number
+}
+
+export interface AgentObservationEvent {
+  type: 'observation'
+  stdout: string
+  stderr: string
+  success: boolean
+  new_files: string[]
+  iteration: number
+}
+
+export interface AgentFinishEvent {
+  type: 'finish'
+  summary: string
+  output_files: string[]
+  iteration: number
+  max_reached?: boolean
+}
+
+export interface AgentErrorEvent {
+  type: 'error'
+  message: string
+  raw?: string
+  traceback?: string
+  iteration?: number
+}
+
+export type AgentEvent =
+  | AgentStartEvent
+  | AgentThinkingEvent
+  | AgentThoughtEvent
+  | AgentActionEvent
+  | AgentObservationEvent
+  | AgentFinishEvent
+  | AgentErrorEvent
+
 // ---- 会话管理 API ----
 
 export async function getSessions(): Promise<{ sessions: SessionMeta[] }> {
@@ -142,6 +212,86 @@ export async function generateCode(
 ): Promise<{ code: string }> {
   const res = await api.post('/generate-code', { session_id: sessionId, instruction, history })
   return res.data
+}
+
+/**
+ * 启动 Agent 循环，通过 SSE 流式接收事件
+ * @param sessionId 会话ID
+ * @param instruction 用户指令
+ * @param history 对话历史
+ * @param onEvent 每收到一个事件时的回调
+ * @param signal AbortSignal，用于取消请求
+ */
+export async function runAgent(
+  sessionId: string,
+  instruction: string,
+  history: Array<{ role: string; content: string }>,
+  onEvent: (event: AgentEvent) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const url = `${BASE}/agent/run`
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      instruction,
+      history,
+    }),
+    signal,
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    let detail = errText
+    try {
+      const errJson = JSON.parse(errText)
+      detail = errJson.detail || errText
+    } catch { /* ignore */ }
+    throw new Error(`Agent 请求失败 (${response.status}): ${detail}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('无法读取响应流')
+
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+
+    // 按 SSE 格式解析：每个事件以 \n\n 分隔
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop() ?? ''
+
+    for (const part of parts) {
+      if (!part.trim()) continue
+
+      let eventType = ''
+      let dataStr = ''
+
+      for (const line of part.split('\n')) {
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7).trim()
+        } else if (line.startsWith('data: ')) {
+          dataStr = line.slice(6).trim()
+        }
+      }
+
+      if (eventType && dataStr) {
+        try {
+          const parsed = JSON.parse(dataStr)
+          onEvent({ type: eventType as AgentEventType, ...parsed } as AgentEvent)
+        } catch (e) {
+          console.warn('[SSE] JSON 解析失败:', dataStr, e)
+        }
+      }
+    }
+  }
 }
 
 export async function getConfig(): Promise<Config> {

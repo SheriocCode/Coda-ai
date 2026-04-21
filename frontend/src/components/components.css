@@ -2578,3 +2578,211 @@
   background: var(--color-gray-50);
   border: 1px solid var(--border);
 }
+
+/* ============================================================
+   Agent 循环 UI 样式
+   ============================================================ */
+
+/* 停止按钮 */
+.send-btn.stop {
+  background: rgba(238, 0, 0, 0.08);
+  color: var(--error);
+  border-color: rgba(238, 0, 0, 0.2);
+}
+.send-btn.stop:hover {
+  background: rgba(238, 0, 0, 0.15);
+  color: var(--error);
+}
+
+/* Agent 思考状态栏 */
+.agent-thinking-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-ring);
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 85%;
+}
+
+.agent-thinking-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Agent 步骤列表容器 */
+.agent-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 100%;
+}
+
+/* Agent 单步骤卡片 */
+.agent-step-card {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-ring);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  transition: box-shadow 0.15s;
+}
+
+.agent-step-card.step-error {
+  border-color: rgba(238, 0, 0, 0.25);
+  background: rgba(238, 0, 0, 0.02);
+}
+
+.agent-step-card.step-success {
+  border-color: rgba(0, 112, 243, 0.18);
+  background: rgba(0, 112, 243, 0.02);
+}
+
+/* 步骤头部（可点击展开/折叠） */
+.agent-step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+  gap: 8px;
+}
+
+.agent-step-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.agent-step-header-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+
+.agent-step-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+/* 步骤状态图标 */
+.step-icon {
+  flex-shrink: 0;
+}
+.step-icon.success {
+  color: var(--success);
+}
+.step-icon.error {
+  color: var(--error);
+}
+
+/* 步骤编号 */
+.agent-step-num {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+}
+
+/* 步骤描述 */
+.agent-step-desc {
+  font-size: 12.5px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* 新文件徽章 */
+.agent-step-files-badge {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--success);
+  background: rgba(0, 112, 243, 0.08);
+  border-radius: 10px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+/* 步骤展开内容 */
+.agent-step-body {
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* 步骤内各区块 */
+.agent-step-section {
+  border-bottom: 1px solid var(--border);
+  padding: 0;
+}
+.agent-step-section:last-child {
+  border-bottom: none;
+}
+
+/* 区块标签 */
+.agent-step-section-label {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  font-family: 'Geist Mono', ui-monospace, monospace;
+}
+
+/* 思考内容 */
+.agent-step-thought {
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-primary);
+  font-style: italic;
+}
+
+/* 输出区域 */
+.agent-step-output {
+  max-height: 250px;
+  overflow-y: auto;
+  background: var(--color-vercel-black);
+}
+
+.agent-step-output .stdout {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.agent-step-output .stderr {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+/* spin 动画（用于 Loader2 图标） */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 1s linear infinite;
+}

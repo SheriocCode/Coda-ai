@@ -12,10 +12,23 @@ import './App.css'
 
 const TOUR_DONE_KEY = 'coda_tour_done'
 
+// Agent 单步骤数据
+export interface AgentStep {
+  iteration: number
+  thought?: string        // AI 的思考内容
+  description?: string    // 行动描述
+  code?: string           // 执行的代码
+  stdout?: string         // 执行输出
+  stderr?: string         // 错误输出
+  success?: boolean       // 执行是否成功
+  newFiles?: string[]     // 本步骤新生成的文件
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
+  // 旧版单次执行字段（兼容保留）
   code?: string
   stdout?: string
   stderr?: string
@@ -23,6 +36,11 @@ export interface Message {
   outputFiles?: string[]
   timestamp: number
   isLoading?: boolean
+  // Agent 循环字段
+  isAgent?: boolean           // 是否为 Agent 模式消息
+  agentSteps?: AgentStep[]    // Agent 执行步骤列表
+  agentStatus?: 'running' | 'done' | 'error'  // Agent 当前状态
+  agentThinking?: string      // 当前正在思考的内容（流式显示）
 }
 
 interface SessionState {
