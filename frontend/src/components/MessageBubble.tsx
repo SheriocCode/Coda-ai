@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Bot,
   User,
@@ -11,6 +11,8 @@ import {
   Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { Message } from '../App'
 import { downloadFile } from '../api'
 
@@ -24,15 +26,24 @@ export function MessageBubble({ message, sessionId, onRetry }: Props) {
   const [showCode, setShowCode] = useState(false)
   const [showOutput, setShowOutput] = useState(true)
   const [editingCode, setEditingCode] = useState(false)
-  // 编辑用的临时 state，只在编辑模式下使用
   const [codeValue, setCodeValue] = useState(message.code || '')
+  // 记录预览模式下代码块的实际高度，切换编辑时保持一致
+  const codeBlockRef = useRef<HTMLDivElement>(null)
+  const [codeBlockHeight, setCodeBlockHeight] = useState<number | null>(null)
 
-  // 当 message.code 更新时（loading -> 有代码），同步更新 codeValue
   useEffect(() => {
     if (message.code) {
       setCodeValue(message.code)
     }
   }, [message.code])
+
+  // 切换到编辑模式时，记录当前代码块高度
+  const handleToggleEdit = () => {
+    if (!editingCode && codeBlockRef.current) {
+      setCodeBlockHeight(codeBlockRef.current.offsetHeight)
+    }
+    setEditingCode(v => !v)
+  }
 
   if (message.isLoading) {
     return (
@@ -51,7 +62,6 @@ export function MessageBubble({ message, sessionId, onRetry }: Props) {
   }
 
   const isUser = message.role === 'user'
-  // 展示用的代码：编辑模式用 codeValue，预览模式直接用 message.code
   const displayCode = editingCode ? codeValue : (message.code || '')
 
   return (
@@ -97,7 +107,7 @@ export function MessageBubble({ message, sessionId, onRetry }: Props) {
                     </button>
                     <button
                       className="code-action-btn"
-                      onClick={() => setEditingCode(!editingCode)}
+                      onClick={handleToggleEdit}
                     >
                       {editingCode
                         ? <><Eye size={11} strokeWidth={1.5} style={{ display: 'inline', marginRight: 3, verticalAlign: 'middle' }} />预览</>
@@ -125,11 +135,28 @@ export function MessageBubble({ message, sessionId, onRetry }: Props) {
                   value={codeValue}
                   onChange={(e) => setCodeValue(e.target.value)}
                   spellCheck={false}
+                  style={codeBlockHeight ? { height: codeBlockHeight, minHeight: codeBlockHeight, maxHeight: 'none' } : {}}
                 />
               ) : (
-                <pre className="code-block">
-                  <code>{message.code}</code>
-                </pre>
+                <div ref={codeBlockRef} className="code-block-wrapper">
+                  <SyntaxHighlighter
+                    language="python"
+                    style={oneDark}
+                    customStyle={{
+                      margin: 0,
+                      padding: '12px 14px',
+                      background: 'var(--color-vercel-black)',
+                      fontSize: '12.5px',
+                      lineHeight: '1.6',
+                      maxHeight: '400px',
+                      overflowY: 'auto',
+                      borderRadius: 0,
+                    }}
+                    codeTagProps={{ style: { fontFamily: "'Geist Mono', 'JetBrains Mono', 'Fira Code', Consolas, monospace" } }}
+                  >
+                    {message.code}
+                  </SyntaxHighlighter>
+                </div>
               )
             )}
           </div>
@@ -199,12 +226,10 @@ export function MessageBubble({ message, sessionId, onRetry }: Props) {
 function MarkdownText({ text }: { text: string }) {
   if (!text) return null
 
-  // 处理换行和基本格式
   const lines = text.split('\n')
   return (
     <div className="markdown-text">
       {lines.map((line, i) => {
-        // 处理粗体 **text**
         const parts = line.split(/(\*\*[^*]+\*\*|`[^`]+`)/)
         return (
           <div key={i} className={line === '' ? 'empty-line' : ''}>
@@ -215,7 +240,6 @@ function MarkdownText({ text }: { text: string }) {
               if (part.startsWith('`') && part.endsWith('`')) {
                 return <code key={j} className="inline-code">{part.slice(1, -1)}</code>
               }
-              // 处理列表项
               if (part.startsWith('- ')) {
                 return <span key={j}>• {part.slice(2)}</span>
               }

@@ -33,6 +33,7 @@
   overflow: hidden;
   /* 折叠时淡出，展开时淡入（延迟等宽度动画接近完成） */
   opacity: 1;
+  pointer-events: auto;
   transition: opacity 0.1s ease 0.15s;
 }
 
@@ -791,6 +792,19 @@
   margin: 0;
   max-height: 400px;
   overflow-y: auto;
+}
+
+/* react-syntax-highlighter 包裹层 */
+.code-block-wrapper {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* 覆盖 react-syntax-highlighter 默认样式 */
+.code-block-wrapper pre {
+  margin: 0 !important;
+  border-radius: 0 !important;
 }
 
 .code-editor {
