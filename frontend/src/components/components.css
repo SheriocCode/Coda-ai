@@ -12,6 +12,62 @@
   height: 100vh;
   overflow: hidden;
   flex-shrink: 0;
+  position: relative;
+  transition: width 0.2s ease, min-width 0.2s ease, max-width 0.2s ease;
+}
+
+/* 折叠状态 */
+.session-sidebar-collapsed {
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+}
+
+/* ── 展开内容区 ── */
+/* 始终渲染，占满剩余空间 */
+.session-expanded-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  /* 折叠时淡出，展开时淡入（延迟等宽度动画接近完成） */
+  opacity: 1;
+  transition: opacity 0.1s ease 0.15s;
+}
+
+/* 折叠时：透明 + 禁止交互，但保留在 DOM 中（不用 display:none，避免切换时跳动） */
+.session-sidebar-collapsed .session-expanded-content {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.05s ease 0s;
+}
+
+/* ── 折叠图标列表 ── */
+/* 始终渲染，展开时透明+禁止交互 */
+.session-collapsed-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+  overflow-y: auto;
+  /* 展开时：绝对定位叠在展开内容下方，不占空间 */
+  position: absolute;
+  top: 45px; /* header 高度约 45px */
+  left: 0;
+  width: 48px;
+  bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.05s ease 0s;
+}
+
+/* 折叠时显示图标列表 */
+.session-sidebar-collapsed .session-collapsed-actions {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.1s ease 0.1s;
 }
 
 .session-sidebar-header {
@@ -23,6 +79,72 @@
   flex-shrink: 0;
 }
 
+/* 折叠时 header 居中 */
+.session-sidebar-collapsed .session-sidebar-header {
+  justify-content: center;
+  padding: 14px 0 10px;
+}
+
+/* 折叠/展开按钮 */
+.session-collapse-btn {
+  background: none;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.session-collapse-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.session-collapsed-new-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--color-vercel-black);
+  color: var(--color-pure-white);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+.session-collapsed-new-btn:hover:not(:disabled) {
+  background: #333;
+}
+.session-collapsed-new-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.session-collapsed-item {
+  width: 32px;
+  height: 32px;
+  background: none;
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.session-collapsed-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+.session-collapsed-item.active {
+  background: var(--color-gray-50);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-ring);
+}
+
 .session-sidebar-title {
   display: flex;
   align-items: center;
@@ -31,6 +153,19 @@
   font-size: 14px;
   color: var(--text-primary);
   letter-spacing: -0.32px;
+  overflow: hidden;
+  white-space: nowrap;
+  /* 展开时淡入（延迟等宽度动画） */
+  opacity: 1;
+  transition: opacity 0.1s ease 0.15s;
+}
+
+/* 折叠时立即隐藏标题，不占空间 */
+.session-sidebar-collapsed .session-sidebar-title {
+  opacity: 0;
+  width: 0;
+  overflow: hidden;
+  transition: opacity 0.05s ease 0s, width 0s ease 0.2s;
 }
 
 .session-new-btn-wrap {
@@ -206,8 +341,8 @@
    ============================================================ */
 .sidebar {
   width: 220px;
-  min-width: 180px;
-  max-width: 260px;
+  min-width: 160px;
+  max-width: 400px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
   display: flex;
@@ -215,6 +350,33 @@
   height: 100vh;
   overflow: hidden;
   flex-shrink: 0;
+}
+
+/* 工作区右侧拖拽分隔条 */
+.workspace-divider {
+  width: 5px;
+  height: 100vh;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  transition: background 0.15s;
+  z-index: 10;
+}
+.workspace-divider:hover,
+.workspace-divider:active {
+  background: var(--color-gray-50);
+}
+.workspace-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 1px;
+  height: 40px;
+  background: var(--color-gray-100);
+  border-radius: 2px;
 }
 
 .sidebar-logo {
@@ -256,7 +418,7 @@
 .upload-zone {
   margin: 8px 12px;
   padding: 14px 10px;
-  border: 1px dashed var(--color-gray-100);
+  border: 2px dashed var(--color-gray-400);
   border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
@@ -270,6 +432,7 @@
 }
 .upload-zone:hover, .upload-zone.drag-over {
   border-color: var(--color-vercel-black);
+  border-width: 2px;
   background: var(--color-gray-50);
   color: var(--text-primary);
 }
@@ -323,17 +486,12 @@
   opacity: 1;
 }
 
-.file-icon {
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
 .file-info {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
 }
 
 .file-name {
@@ -345,6 +503,9 @@
 }
 
 .file-size {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   color: var(--text-muted);
 }

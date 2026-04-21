@@ -50,10 +50,21 @@ function App() {
   const [previewFile, setPreviewFile] = useState<WorkspaceFile | null>(null)
   const [showTour, setShowTour] = useState(false)
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+
   const [previewWidth, setPreviewWidth] = useState(PREVIEW_DEFAULT_WIDTH)
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
+
+  // 工作区侧边栏宽度拖拽
+  const WORKSPACE_MIN_WIDTH = 160
+  const WORKSPACE_MAX_WIDTH = 400
+  const WORKSPACE_DEFAULT_WIDTH = 220
+  const [workspaceWidth, setWorkspaceWidth] = useState(WORKSPACE_DEFAULT_WIDTH)
+  const isWorkspaceDragging = useRef(false)
+  const workspaceDragStartX = useRef(0)
+  const workspaceDragStartWidth = useRef(0)
 
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null
   const activeState = activeSessionId ? sessionStates[activeSessionId] : null
@@ -189,21 +200,45 @@ function App() {
     document.body.style.userSelect = 'none'
   }, [previewWidth])
 
+  const handleWorkspaceDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isWorkspaceDragging.current = true
+    workspaceDragStartX.current = e.clientX
+    workspaceDragStartWidth.current = workspaceWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [workspaceWidth])
+
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current) return
-      const delta = dragStartX.current - e.clientX
-      const newWidth = Math.min(
-        PREVIEW_MAX_WIDTH,
-        Math.max(PREVIEW_MIN_WIDTH, dragStartWidth.current + delta)
-      )
-      setPreviewWidth(newWidth)
+      if (isDragging.current) {
+        const delta = dragStartX.current - e.clientX
+        const newWidth = Math.min(
+          PREVIEW_MAX_WIDTH,
+          Math.max(PREVIEW_MIN_WIDTH, dragStartWidth.current + delta)
+        )
+        setPreviewWidth(newWidth)
+      }
+      if (isWorkspaceDragging.current) {
+        const delta = e.clientX - workspaceDragStartX.current
+        const newWidth = Math.min(
+          WORKSPACE_MAX_WIDTH,
+          Math.max(WORKSPACE_MIN_WIDTH, workspaceDragStartWidth.current + delta)
+        )
+        setWorkspaceWidth(newWidth)
+      }
     }
     const onMouseUp = () => {
-      if (!isDragging.current) return
-      isDragging.current = false
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
+      if (isDragging.current) {
+        isDragging.current = false
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+      if (isWorkspaceDragging.current) {
+        isWorkspaceDragging.current = false
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
     }
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
@@ -272,17 +307,28 @@ function App() {
         onOpenSettings={() => setShowSettings(true)}
         onStartTour={handleStartTour}
         config={config}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(v => !v)}
       />
 
       {/* 左侧：工作区文件管理 */}
       {activeSessionId && (
-        <Sidebar
-          sessionId={activeSessionId}
-          files={currentFiles}
-          selectedFile={previewFile}
-          onSelectFile={(f) => setPreviewFile(f)}
-          onRefresh={() => refreshWorkspace(activeSessionId)}
-        />
+        <>
+          <Sidebar
+            sessionId={activeSessionId}
+            files={currentFiles}
+            selectedFile={previewFile}
+            onSelectFile={(f) => setPreviewFile(f)}
+            onRefresh={() => refreshWorkspace(activeSessionId)}
+            width={workspaceWidth}
+          />
+          {/* 工作区右侧拖拽分隔条 */}
+          <div
+            className="workspace-divider"
+            onMouseDown={handleWorkspaceDividerMouseDown}
+            title="拖拽调整工作区宽度"
+          />
+        </>
       )}
 
       {/* 中间：AI 对话 */}

@@ -5,9 +5,15 @@ import {
   Download,
   Trash2,
   RefreshCw,
+  FileSpreadsheet,
+  FileText,
+  FileJson,
+  FileCode2,
+  FileType2,
+  File,
 } from 'lucide-react'
 import type { WorkspaceFile } from '../api'
-import { uploadFile, deleteFile, downloadFile, getFileIcon, formatSize } from '../api'
+import { uploadFile, deleteFile, downloadFile, formatSize } from '../api'
 
 interface Props {
   sessionId: string
@@ -15,9 +21,10 @@ interface Props {
   selectedFile: WorkspaceFile | null
   onSelectFile: (f: WorkspaceFile) => void
   onRefresh: () => void
+  width?: number
 }
 
-export function Sidebar({ sessionId, files, selectedFile, onSelectFile, onRefresh }: Props) {
+export function Sidebar({ sessionId, files, selectedFile, onSelectFile, onRefresh, width }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -81,7 +88,7 @@ export function Sidebar({ sessionId, files, selectedFile, onSelectFile, onRefres
   const workspaceFiles = files.filter(f => !f.path.startsWith('output/'))
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={width ? { width, minWidth: width, maxWidth: width } : undefined}>
       {/* 上传区域 */}
       <div
         className={`upload-zone ${dragOver ? 'drag-over' : ''} ${uploading ? 'uploading' : ''}`}
@@ -162,6 +169,30 @@ export function Sidebar({ sessionId, files, selectedFile, onSelectFile, onRefres
   )
 }
 
+function getFileTypeIcon(ext: string) {
+  const props = { size: 11, strokeWidth: 1.5, style: { flexShrink: 0 } }
+  switch (ext) {
+    case '.xlsx':
+    case '.xls':
+      return <FileSpreadsheet {...props} style={{ ...props.style, color: '#217346' }} />
+    case '.csv':
+      return <FileSpreadsheet {...props} style={{ ...props.style, color: '#0e7c42' }} />
+    case '.docx':
+    case '.doc':
+      return <FileText {...props} style={{ ...props.style, color: '#2b579a' }} />
+    case '.pdf':
+      return <FileType2 {...props} style={{ ...props.style, color: '#e74c3c' }} />
+    case '.txt':
+      return <FileText {...props} style={{ ...props.style, color: '#888' }} />
+    case '.json':
+      return <FileJson {...props} style={{ ...props.style, color: '#f0a500' }} />
+    case '.py':
+      return <FileCode2 {...props} style={{ ...props.style, color: '#3572A5' }} />
+    default:
+      return <File {...props} style={{ ...props.style, color: '#aaa' }} />
+  }
+}
+
 function FileItem({
   file,
   selected,
@@ -180,10 +211,12 @@ function FileItem({
       className={`file-item ${selected ? 'selected' : ''}`}
       onClick={onClick}
     >
-      <span className="file-icon">{getFileIcon(file.ext)}</span>
       <div className="file-info">
         <span className="file-name" title={file.name}>{file.name}</span>
-        <span className="file-size">{formatSize(file.size)}</span>
+        <span className="file-size">
+          {getFileTypeIcon(file.ext)}
+          {formatSize(file.size)}
+        </span>
       </div>
       <div className="file-actions">
         <button className="file-action-btn" onClick={onDownload} title="下载">
