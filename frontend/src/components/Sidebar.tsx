@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import type { WorkspaceFile } from '../api'
 import { uploadFile, deleteFile, downloadFile, formatSize } from '../api'
+import { ConfirmDialog } from './ConfirmDialog'
 
 interface Props {
   sessionId: string
@@ -28,6 +29,7 @@ export function Sidebar({ sessionId, files, selectedFile, onSelectFile, onRefres
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+  const [confirmFile, setConfirmFile] = useState<WorkspaceFile | null>(null)
 
   const handleUpload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
@@ -53,9 +55,15 @@ export function Sidebar({ sessionId, files, selectedFile, onSelectFile, onRefres
     }
   }
 
-  const handleDelete = async (e: React.MouseEvent, file: WorkspaceFile) => {
+  const handleDelete = (e: React.MouseEvent, file: WorkspaceFile) => {
     e.stopPropagation()
-    if (!confirm(`确认删除 ${file.name}？`)) return
+    setConfirmFile(file)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!confirmFile) return
+    const file = confirmFile
+    setConfirmFile(null)
     try {
       await deleteFile(sessionId, file.path)
       onRefresh()
@@ -88,6 +96,15 @@ export function Sidebar({ sessionId, files, selectedFile, onSelectFile, onRefres
   const workspaceFiles = files.filter(f => !f.path.startsWith('output/'))
 
   return (
+    <>
+    <ConfirmDialog
+      open={!!confirmFile}
+      title={`确认删除文件`}
+      description={confirmFile ? `「${confirmFile.name}」删除后无法恢复。` : ''}
+      confirmText="删除"
+      onConfirm={handleConfirmDelete}
+      onCancel={() => setConfirmFile(null)}
+    />
     <aside className="sidebar" style={width ? { width, minWidth: width, maxWidth: width } : undefined}>
       {/* 上传区域 */}
       <div
@@ -166,6 +183,7 @@ export function Sidebar({ sessionId, files, selectedFile, onSelectFile, onRefres
         </button>
       </div>
     </aside>
+    </>
   )
 }
 

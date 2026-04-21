@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import type { SessionMeta, Config } from '../api'
 import { createSession, deleteSession, renameSession } from '../api'
+import { ConfirmDialog } from './ConfirmDialog'
 
 interface Props {
   sessions: SessionMeta[]
@@ -34,6 +35,7 @@ export function SessionSidebar({
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [confirmSession, setConfirmSession] = useState<SessionMeta | null>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -59,9 +61,15 @@ export function SessionSidebar({
     }
   }
 
-  const handleDelete = async (e: React.MouseEvent, session: SessionMeta) => {
+  const handleDelete = (e: React.MouseEvent, session: SessionMeta) => {
     e.stopPropagation()
-    if (!confirm(`确认删除会话「${session.name}」及其所有文件？`)) return
+    setConfirmSession(session)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!confirmSession) return
+    const session = confirmSession
+    setConfirmSession(null)
     try {
       await deleteSession(session.id)
       toast.success(`已删除会话「${session.name}」`)
@@ -116,6 +124,15 @@ export function SessionSidebar({
   }
 
   return (
+    <>
+    <ConfirmDialog
+      open={!!confirmSession}
+      title="确认删除会话"
+      description={confirmSession ? `「${confirmSession.name}」及其所有文件将被永久删除。` : ''}
+      confirmText="删除"
+      onConfirm={handleConfirmDelete}
+      onCancel={() => setConfirmSession(null)}
+    />
     <aside className={`session-sidebar${collapsed ? ' session-sidebar-collapsed' : ''}`}>
       {/* 顶部标题 */}
       <div className="session-sidebar-header">
@@ -271,5 +288,6 @@ export function SessionSidebar({
         </div>
       </div>
     </aside>
+    </>
   )
 }

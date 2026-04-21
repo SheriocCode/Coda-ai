@@ -1770,6 +1770,123 @@
 }
 
 /* ============================================================
+   Confirm Dialog（自定义确认对话框）
+   ============================================================ */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(3px);
+  animation: confirm-fade-in 0.15s ease;
+}
+
+@keyframes confirm-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.confirm-dialog {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    rgba(0,0,0,0.12) 0px 0px 0px 1px,
+    rgba(0,0,0,0.08) 0px 8px 32px,
+    rgba(0,0,0,0.04) 0px 24px 48px;
+  width: 360px;
+  max-width: 90vw;
+  padding: 20px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: confirm-slide-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes confirm-slide-in {
+  from { opacity: 0; transform: scale(0.94) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.confirm-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+  background: rgba(238, 0, 0, 0.08);
+  color: var(--error);
+  flex-shrink: 0;
+}
+
+.confirm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.confirm-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+  line-height: 1.4;
+}
+
+.confirm-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.confirm-btn-cancel {
+  padding: 7px 16px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.confirm-btn-cancel:hover {
+  background: var(--color-gray-50);
+  color: var(--text-primary);
+}
+
+.confirm-btn-ok {
+  padding: 7px 16px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-pure-white);
+  background: var(--color-vercel-black);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.confirm-btn-ok:hover {
+  background: var(--accent-hover);
+}
+.confirm-btn-ok.danger {
+  background: var(--error);
+}
+.confirm-btn-ok.danger:hover {
+  background: #cc0000;
+}
+
+/* ============================================================
    Settings Modal（二级设置面板 — QQ 风格左导航）
    ============================================================ */
 .settings-overlay {
