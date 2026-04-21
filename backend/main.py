@@ -162,9 +162,11 @@ def get_file_preview(file_path: Path, max_rows: int = 5) -> str:
     try:
         import pandas as pd
         if file_path.suffix.lower() in [".xlsx", ".xls"]:
-            xl = pd.ExcelFile(file_path)
+            # 使用 with 语句确保句柄立即释放，避免 Windows 文件占用
+            with pd.ExcelFile(file_path) as xl:
+                sheet_names = xl.sheet_names[:3]
             previews = []
-            for sheet in xl.sheet_names[:3]:
+            for sheet in sheet_names:
                 df = pd.read_excel(file_path, sheet_name=sheet, nrows=max_rows, dtype=str)
                 previews.append(f"Sheet: {sheet}\n{df.to_string(index=False)}")
             return "\n\n".join(previews)
@@ -446,9 +448,23 @@ def delete_file(session_id: str, filename: str):
         raise HTTPException(status_code=404, detail="文件不存在")
     
     if target.is_file():
-        target.unlink()
+        try:
+            target.unlink()
+        except PermissionError:
+            # Windows 上文件可能被其他进程（如 pandas/openpyxl）占用，
+            # 强制垃圾回收后重试一次
+            import gc, time
+            gc.collect()
+            time.sleep(0.3)
+            try:
+                target.unlink()
+            except PermissionError as e:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"文件正被占用，无法删除，请稍后重试：{e}"
+                )
     elif target.is_dir():
-        shutil.rmtree(target)
+        shutil.rmtree(target, ignore_errors=True)
     
     return {"success": True}
 
@@ -468,9 +484,12 @@ def preview_file(session_id: str, filename: str, max_rows: int = 10):
         try:
             import pandas as pd
             if ext in [".xlsx", ".xls"]:
-                xl = pd.ExcelFile(target)
+                # 使用 with 语句确保 ExcelFile 句柄在读取完成后立即释放
+                # 避免 Windows 上文件被占用导致后续删除失败
+                with pd.ExcelFile(target) as xl:
+                    sheet_names = xl.sheet_names
                 sheets = {}
-                for sheet in xl.sheet_names:
+                for sheet in sheet_names:
                     df = pd.read_excel(target, sheet_name=sheet, nrows=max_rows, dtype=str)
                     df = df.fillna("")
                     sheets[sheet] = {
