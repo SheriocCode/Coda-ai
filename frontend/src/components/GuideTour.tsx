@@ -268,7 +268,7 @@ export const DEFAULT_TOUR_STEPS: TourStep[] = [
   {
     target: '.session-new-btn',
     title: '新建会话',
-    content: '点击此按钮创建新会话。创建后可以双击或点击铅笔图标重命名会话，方便区分不同任务。',
+    content: '点击此按钮创建新会话。创建后点击铅笔图标重命名会话，方便区分不同任务。',
     placement: 'right',
   },
   {
@@ -293,6 +293,6 @@ export const DEFAULT_TOUR_STEPS: TourStep[] = [
     target: '.sidebar-user-center',
     title: '用户中心',
     content: '在这里可以配置 API Key、查看帮助文档，以及重新触发本引导。配置好 API Key 后即可开始使用 AI 功能。',
-    placement: 'right',
+    placement: 'top',
   },
 ]
