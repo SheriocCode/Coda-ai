@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  Bot,
   User,
   Copy,
   Pencil,
@@ -49,7 +48,7 @@ export function MessageBubble({ message, sessionId, onRetry }: Props) {
     return (
       <div className="message assistant">
         <div className="message-avatar">
-          <Bot size={18} strokeWidth={1.5} />
+          <img src="/icon.png" alt="AI" className="message-avatar-icon" />
         </div>
         <div className="message-body">
           <div className="loading-dots">
@@ -68,7 +67,7 @@ export function MessageBubble({ message, sessionId, onRetry }: Props) {
     <div className={`message ${isUser ? 'user' : 'assistant'}`}>
       {!isUser && (
         <div className="message-avatar">
-          <Bot size={18} strokeWidth={1.5} />
+          <img src="/icon.png" alt="AI" className="message-avatar-icon" />
         </div>
       )}
 

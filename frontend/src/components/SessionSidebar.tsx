@@ -256,10 +256,10 @@ export function SessionSidebar({
 
         {/* 底部用户中心 */}
         <div className="sidebar-user-center">
-          {/* API Key 状态指示 */}
-          <div className={`user-center-status ${config?.has_api_key ? 'ok' : 'warn'}`}>
-            <Bot size={14} strokeWidth={1.5} />
-            <span>{config?.has_api_key ? 'AI 已连接' : '未配置 API Key'}</span>
+            {/* API Key 状态指示 */}
+            <div className={`user-center-status ${config?.has_api_key ? 'ok' : 'warn'}`}>
+              <img src="/icon.png" alt="AI" className="ai-status-icon" />
+              <span>{config?.has_api_key ? 'AI 已连接' : '未配置 API Key'}</span>
             {config?.has_api_key
               ? <CheckCircle size={12} strokeWidth={2} className="status-icon ok" />
               : <AlertTriangle size={12} strokeWidth={2} className="status-icon warn" />

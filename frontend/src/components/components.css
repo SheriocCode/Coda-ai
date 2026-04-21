@@ -962,6 +962,21 @@
   box-shadow: var(--shadow-ring);
 }
 
+/* AI 状态指示器图标 */
+.ai-status-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* 消息头像中的 icon.png - 填满头像框 */
+.message-avatar-icon {
+  width: 110%;
+  height: 110%;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
 .message-body {
   flex: 1;
   min-width: 0;
