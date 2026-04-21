@@ -398,23 +398,47 @@ def get_workspace(session_id: str):
 
 
 @app.post("/api/upload/{session_id}")
-async def upload_file(session_id: str, file: UploadFile = File(...)):
-    """上传文件到指定会话的工作区"""
+async def upload_file(
+    session_id: str,
+    file: UploadFile = File(...),
+    relative_path: Optional[str] = Form(None),
+):
+    """上传文件到指定会话的工作区，支持子文件夹路径"""
     ensure_session_exists(session_id)
     workspace_dir = get_session_dir(session_id)
-    
-    filename = file.filename or f"upload_{uuid.uuid4().hex[:8]}"
-    filename = Path(filename).name
-    
-    dest = workspace_dir / filename
+
+    print(f"[upload] file={file.filename!r}  relative_path={relative_path!r}")
+
+    # 统一使用绝对路径，避免 relative_to 混用相对/绝对路径报错
+    workspace_abs = workspace_dir.resolve()
+
+    # 优先使用 relative_path（含子目录），否则退化为纯文件名
+    if relative_path and relative_path.strip():
+        # 安全清理：去掉开头的 / 或 \，规范化分隔符
+        rel = Path(relative_path.strip().lstrip("/\\").replace("\\", "/"))
+        # 防止路径穿越
+        dest = (workspace_abs / rel).resolve()
+        try:
+            dest.relative_to(workspace_abs)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="非法路径")
+        print(f"[upload] -> dest={dest}")
+    else:
+        filename = file.filename or f"upload_{uuid.uuid4().hex[:8]}"
+        filename = Path(filename).name
+        dest = workspace_abs / filename
+        print(f"[upload] -> dest(flat)={dest}")
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
     with open(dest, "wb") as f:
         content = await file.read()
         f.write(content)
-    
+
     preview = ""
     if dest.suffix.lower() in [".xlsx", ".xls", ".csv"]:
         preview = get_file_preview(dest)
-    
+
     # 更新会话的 updated_at
     sessions = load_sessions_meta()
     for s in sessions:
@@ -422,11 +446,11 @@ async def upload_file(session_id: str, file: UploadFile = File(...)):
             s["updated_at"] = datetime.now().isoformat()
             break
     save_sessions_meta(sessions)
-    
+
     return {
         "success": True,
-        "filename": filename,
-        "path": str(dest.relative_to(workspace_dir).as_posix()),
+        "filename": dest.name,
+        "path": str(dest.relative_to(workspace_abs).as_posix()),
         "size": dest.stat().st_size,
         "preview": preview
     }

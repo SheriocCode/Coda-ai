@@ -89,10 +89,14 @@ export async function getWorkspace(sessionId: string): Promise<WorkspaceInfo> {
 
 export async function uploadFile(
   sessionId: string,
-  file: File
+  file: File,
+  relativePath?: string
 ): Promise<{ success: boolean; filename: string; path: string; preview: string }> {
   const form = new FormData()
   form.append('file', file)
+  if (relativePath) {
+    form.append('relative_path', relativePath)
+  }
   const res = await api.post(`/upload/${sessionId}`, form, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
