@@ -137,7 +137,6 @@ export function SessionSidebar({
       {/* 顶部标题 */}
       <div className="session-sidebar-header">
         <div className="session-sidebar-title">
-          <img src="/icon.png" alt="Coda" className="sidebar-logo" />
           <span>Coda</span>
         </div>
         <button
@@ -258,7 +257,6 @@ export function SessionSidebar({
         <div className="sidebar-user-center">
             {/* API Key 状态指示 */}
             <div className={`user-center-status ${config?.has_api_key ? 'ok' : 'warn'}`}>
-              <img src="/icon.png" alt="AI" className="ai-status-icon" />
               <span>{config?.has_api_key ? 'AI 已连接' : '未配置 API Key'}</span>
             {config?.has_api_key
               ? <CheckCircle size={12} strokeWidth={2} className="status-icon ok" />

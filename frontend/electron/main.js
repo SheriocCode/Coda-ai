@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, Menu } = require('electron')
 const path = require('path')
 const net = require('net')
 
@@ -75,6 +75,9 @@ function createWindow() {
     mainWindow = null
   })
 }
+
+// 移除默认菜单栏
+Menu.setApplicationMenu(null)
 
 app.whenReady().then(async () => {
   if (!isDev) {

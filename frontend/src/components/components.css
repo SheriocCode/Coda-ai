@@ -1839,6 +1839,7 @@
 .user-center-status {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 7px 10px;
   border-radius: var(--radius);
@@ -1862,7 +1863,6 @@
 }
 
 .user-center-status span {
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
