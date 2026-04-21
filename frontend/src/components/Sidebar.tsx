@@ -1,17 +1,23 @@
 import { useRef, useState } from 'react'
-import type { WorkspaceFile, Config } from '../api'
+import { toast } from 'sonner'
+import {
+  FolderOpen,
+  Download,
+  Trash2,
+  RefreshCw,
+} from 'lucide-react'
+import type { WorkspaceFile } from '../api'
 import { uploadFile, deleteFile, downloadFile, getFileIcon, formatSize } from '../api'
 
 interface Props {
+  sessionId: string
   files: WorkspaceFile[]
   selectedFile: WorkspaceFile | null
   onSelectFile: (f: WorkspaceFile) => void
   onRefresh: () => void
-  onOpenSettings: () => void
-  config: Config | null
 }
 
-export function Sidebar({ files, selectedFile, onSelectFile, onRefresh, onOpenSettings, config }: Props) {
+export function Sidebar({ sessionId, files, selectedFile, onSelectFile, onRefresh }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -19,13 +25,22 @@ export function Sidebar({ files, selectedFile, onSelectFile, onRefresh, onOpenSe
   const handleUpload = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return
     setUploading(true)
+    const names = Array.from(fileList).map(f => f.name)
+    const toastId = toast.loading(
+      names.length === 1 ? `正在上传 ${names[0]}...` : `正在上传 ${names.length} 个文件...`
+    )
     try {
       for (const file of Array.from(fileList)) {
-        await uploadFile(file)
+        await uploadFile(sessionId, file)
       }
       onRefresh()
+      toast.success(
+        names.length === 1 ? `${names[0]} 上传成功` : `${names.length} 个文件上传成功`,
+        { id: toastId }
+      )
     } catch (e) {
       console.error('上传失败', e)
+      toast.error('上传失败，请重试', { id: toastId })
     } finally {
       setUploading(false)
     }
@@ -35,16 +50,24 @@ export function Sidebar({ files, selectedFile, onSelectFile, onRefresh, onOpenSe
     e.stopPropagation()
     if (!confirm(`确认删除 ${file.name}？`)) return
     try {
-      await deleteFile(file.path)
+      await deleteFile(sessionId, file.path)
       onRefresh()
+      toast.success(`已删除 ${file.name}`)
     } catch (e) {
       console.error('删除失败', e)
+      toast.error(`删除失败：${file.name}`)
     }
   }
 
   const handleDownload = async (e: React.MouseEvent, file: WorkspaceFile) => {
     e.stopPropagation()
-    await downloadFile(file.path)
+    try {
+      downloadFile(sessionId, file.path)
+      toast.success(`${file.name} 下载成功`)
+    } catch (e) {
+      console.error('下载失败', e)
+      toast.error(`下载失败：${file.name}`)
+    }
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -59,28 +82,6 @@ export function Sidebar({ files, selectedFile, onSelectFile, onRefresh, onOpenSe
 
   return (
     <aside className="sidebar">
-      {/* 顶部标题 */}
-      <div className="sidebar-header">
-        <div className="sidebar-title">
-          <span className="sidebar-logo">⚡</span>
-          <span>AI Excel Helper</span>
-        </div>
-        <button
-          className="icon-btn"
-          onClick={onOpenSettings}
-          title="设置"
-        >
-          ⚙️
-        </button>
-      </div>
-
-      {/* API Key 状态 */}
-      {config && (
-        <div className={`api-status ${config.has_api_key ? 'ok' : 'warn'}`}>
-          {config.has_api_key ? '✅ AI 已连接' : '⚠️ 未配置 API Key'}
-        </div>
-      )}
-
       {/* 上传区域 */}
       <div
         className={`upload-zone ${dragOver ? 'drag-over' : ''} ${uploading ? 'uploading' : ''}`}
@@ -98,12 +99,12 @@ export function Sidebar({ files, selectedFile, onSelectFile, onRefresh, onOpenSe
           onChange={(e) => handleUpload(e.target.files)}
         />
         {uploading ? (
-          <span>⏳ 上传中...</span>
+          <span>上传中...</span>
         ) : (
           <>
-            <span className="upload-icon">📂</span>
-            <span>点击或拖拽上传文件</span>
-            <span className="upload-hint">支持 xlsx, docx, csv 等</span>
+            <FolderOpen size={20} strokeWidth={1.5} className="upload-icon" />
+            <span>点击或拖拽上传</span>
+            <span className="upload-hint">xlsx, docx, csv 等</span>
           </>
         )}
       </div>
@@ -128,7 +129,7 @@ export function Sidebar({ files, selectedFile, onSelectFile, onRefresh, onOpenSe
 
         {outputFiles.length > 0 && (
           <>
-            <div className="file-group-label">📥 输出文件</div>
+            <div className="file-group-label">输出文件</div>
             {outputFiles.map(file => (
               <FileItem
                 key={file.path}
@@ -153,7 +154,8 @@ export function Sidebar({ files, selectedFile, onSelectFile, onRefresh, onOpenSe
       {/* 底部刷新 */}
       <div className="sidebar-footer">
         <button className="refresh-btn" onClick={onRefresh}>
-          🔄 刷新工作区
+          <RefreshCw size={13} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+          刷新工作区
         </button>
       </div>
     </aside>
@@ -184,8 +186,12 @@ function FileItem({
         <span className="file-size">{formatSize(file.size)}</span>
       </div>
       <div className="file-actions">
-        <button className="file-action-btn" onClick={onDownload} title="下载">⬇️</button>
-        <button className="file-action-btn" onClick={onDelete} title="删除">🗑️</button>
+        <button className="file-action-btn" onClick={onDownload} title="下载">
+          <Download size={13} strokeWidth={1.5} />
+        </button>
+        <button className="file-action-btn" onClick={onDelete} title="删除">
+          <Trash2 size={13} strokeWidth={1.5} />
+        </button>
       </div>
     </div>
   )

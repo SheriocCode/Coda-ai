@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { Trash2, Send, Loader2 } from 'lucide-react'
 import type { Message } from '../App'
 import type { WorkspaceFile, Config } from '../api'
 import { executeInstruction, executeCode } from '../api'
 import { MessageBubble } from './MessageBubble'
 
 interface Props {
+  sessionId: string
+  sessionName: string
   messages: Message[]
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   files: WorkspaceFile[]
@@ -13,7 +16,15 @@ interface Props {
   config: Config | null
 }
 
-export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, config }: Props) {
+export function ChatPanel({
+  sessionId,
+  sessionName,
+  messages,
+  setMessages,
+  files,
+  onRefreshWorkspace,
+  config,
+}: Props) {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -50,7 +61,7 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
   const buildHistory = useCallback(() => {
     return messages
       .filter(m => m.role !== 'system' && !m.isLoading && m.id !== 'welcome')
-      .slice(-10) // 最近10条
+      .slice(-10)
       .map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.code
@@ -66,10 +77,8 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
     setInput('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
 
-    // 添加用户消息
     addMessage({ role: 'user', content: instruction })
 
-    // 添加 loading 消息
     const loadingId = addMessage({
       role: 'assistant',
       content: '',
@@ -80,7 +89,7 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
 
     try {
       const history = buildHistory()
-      const result = await executeInstruction(instruction, history)
+      const result = await executeInstruction(sessionId, instruction, history)
 
       updateMessage(loadingId, {
         isLoading: false,
@@ -94,18 +103,15 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
         outputFiles: result.output_files,
       })
 
-      // 刷新工作区
       if (result.output_files.length > 0) {
         onRefreshWorkspace()
       }
 
-      // 如果失败，自动重试一次
       if (!result.success && result.stderr) {
         await handleAutoRetry(instruction, result.code, result.stderr, history)
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err)
-      // 检查是否是 axios 错误
       const axiosErr = err as { response?: { data?: { detail?: string } } }
       const detail = axiosErr?.response?.data?.detail || errMsg
       updateMessage(loadingId, {
@@ -137,7 +143,7 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
         ...history,
         { role: 'assistant', content: `生成的代码:\n\`\`\`python\n${failedCode}\n\`\`\`` },
       ]
-      const result = await executeInstruction(retryInstruction, retryHistory)
+      const result = await executeInstruction(sessionId, retryInstruction, retryHistory)
 
       updateMessage(retryLoadingId, {
         isLoading: false,
@@ -172,7 +178,7 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
     setIsLoading(true)
 
     try {
-      const result = await executeCode(code, instruction)
+      const result = await executeCode(sessionId, code, instruction)
       updateMessage(loadingId, {
         isLoading: false,
         content: result.success ? '✅ 执行成功' : '❌ 执行出错',
@@ -203,7 +209,6 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
     }
   }
 
-  // 快捷指令
   const quickCommands = [
     '读取工作区的 xlsx 文件，显示前5行数据',
     '统计 Excel 中各列的基本信息（行数、空值数等）',
@@ -216,7 +221,7 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
       {/* 顶部栏 */}
       <div className="chat-header">
         <div className="chat-header-info">
-          <span className="chat-title">AI 代码解释器</span>
+          <span className="chat-title">{sessionName}</span>
           <span className="chat-subtitle">
             {files.length > 0
               ? `工作区 ${files.length} 个文件`
@@ -228,7 +233,8 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
           onClick={() => setMessages(prev => [prev[0]])}
           title="清空对话"
         >
-          🗑️ 清空
+          <Trash2 size={13} strokeWidth={1.5} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
+          清空
         </button>
       </div>
 
@@ -238,6 +244,7 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
           <MessageBubble
             key={msg.id}
             message={msg}
+            sessionId={sessionId}
             onRetry={handleRetryWithCode}
           />
         ))}
@@ -291,9 +298,9 @@ export function ChatPanel({ messages, setMessages, files, onRefreshWorkspace, co
             disabled={isLoading || !input.trim() || !config?.has_api_key}
           >
             {isLoading ? (
-              <span className="spinner">⏳</span>
+              <Loader2 size={16} strokeWidth={1.5} className="spin" />
             ) : (
-              '▶'
+              <Send size={15} strokeWidth={1.5} />
             )}
           </button>
         </div>

@@ -1,6 +1,6 @@
 """
 AI 驱动的 Excel/Word 处理工具 - 后端服务
-极简设计：接收指令 -> AI生成代码 -> 执行代码 -> 返回结果
+多会话版：每个会话拥有独立的工作区目录
 """
 
 import os
@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 
 from dotenv import load_dotenv
 
@@ -32,11 +33,15 @@ load_dotenv()
 # ============================================================
 # 打包后 electron 会通过环境变量 WORKSPACE_DIR 传入用户数据目录
 _workspace_env = os.environ.get("WORKSPACE_DIR")
-WORKSPACE_DIR = Path(_workspace_env) if _workspace_env else Path("workspace")
-WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+BASE_DIR = Path(_workspace_env) if _workspace_env else Path("workspace")
+BASE_DIR.mkdir(parents=True, exist_ok=True)
 
-OUTPUT_DIR = WORKSPACE_DIR / "output"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# 多会话根目录
+SESSIONS_DIR = BASE_DIR / "sessions"
+SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+
+# 会话元数据文件
+SESSIONS_META_FILE = BASE_DIR / "sessions.json"
 
 # AI 客户端（从环境变量读取 key）
 def get_ai_client():
@@ -51,7 +56,7 @@ def get_ai_client():
         raise ValueError("ARK_MODEL environment variable is required")
     return OpenAI(api_key=api_key, base_url=base_url), model
 
-app = FastAPI(title="AI Excel Helper", version="1.0.0")
+app = FastAPI(title="AI Excel Helper", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,8 +71,9 @@ app.add_middleware(
 # ============================================================
 class ExecuteRequest(BaseModel):
     instruction: str          # 用户自然语言指令
+    session_id: str           # 会话ID
     code: Optional[str] = None  # 可选：直接执行的代码（用于重试）
-    context: Optional[dict] = None  # 工作区上下文（文件列表、表格预览等）
+    context: Optional[dict] = None  # 工作区上下文
     history: Optional[list] = None  # 对话历史
 
 class ExecuteResponse(BaseModel):
@@ -77,22 +83,78 @@ class ExecuteResponse(BaseModel):
     success: bool
     output_files: list  # 生成的文件列表
 
+class SessionMeta(BaseModel):
+    id: str
+    name: str
+    created_at: str
+    updated_at: str
+
+class CreateSessionRequest(BaseModel):
+    name: Optional[str] = None
+
+class RenameSessionRequest(BaseModel):
+    name: str
+
+# ============================================================
+# 会话元数据管理
+# ============================================================
+def load_sessions_meta() -> list:
+    """加载会话元数据"""
+    if not SESSIONS_META_FILE.exists():
+        return []
+    try:
+        with open(SESSIONS_META_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def save_sessions_meta(sessions: list):
+    """保存会话元数据"""
+    with open(SESSIONS_META_FILE, "w", encoding="utf-8") as f:
+        json.dump(sessions, f, ensure_ascii=False, indent=2)
+
+def get_session_dir(session_id: str) -> Path:
+    """获取会话工作区目录"""
+    return SESSIONS_DIR / session_id
+
+def get_session_output_dir(session_id: str) -> Path:
+    """获取会话输出目录"""
+    output = get_session_dir(session_id) / "output"
+    output.mkdir(parents=True, exist_ok=True)
+    return output
+
+def ensure_session_exists(session_id: str):
+    """确保会话存在，不存在则抛出异常"""
+    sessions = load_sessions_meta()
+    if not any(s["id"] == session_id for s in sessions):
+        raise HTTPException(status_code=404, detail=f"会话 {session_id} 不存在")
+    session_dir = get_session_dir(session_id)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    get_session_output_dir(session_id)
+
 # ============================================================
 # 工具函数
 # ============================================================
-def get_workspace_info() -> dict:
-    """获取工作区文件信息"""
+def get_workspace_info(session_id: str) -> dict:
+    """获取指定会话的工作区文件信息"""
+    workspace_dir = get_session_dir(session_id)
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    
     files = []
-    for f in WORKSPACE_DIR.rglob("*"):
+    for f in workspace_dir.rglob("*"):
         if f.is_file() and not f.name.startswith("."):
-            rel = f.relative_to(WORKSPACE_DIR)
+            rel = f.relative_to(workspace_dir)
             files.append({
                 "name": f.name,
                 "path": str(rel).replace("\\", "/"),
                 "size": f.stat().st_size,
                 "ext": f.suffix.lower()
             })
-    return {"files": files, "workspace_dir": str(WORKSPACE_DIR.absolute())}
+    return {
+        "files": files,
+        "workspace_dir": str(workspace_dir.absolute()),
+        "session_id": session_id
+    }
 
 
 def get_file_preview(file_path: Path, max_rows: int = 5) -> str:
@@ -100,10 +162,9 @@ def get_file_preview(file_path: Path, max_rows: int = 5) -> str:
     try:
         import pandas as pd
         if file_path.suffix.lower() in [".xlsx", ".xls"]:
-            # 读取所有sheet
             xl = pd.ExcelFile(file_path)
             previews = []
-            for sheet in xl.sheet_names[:3]:  # 最多3个sheet
+            for sheet in xl.sheet_names[:3]:
                 df = pd.read_excel(file_path, sheet_name=sheet, nrows=max_rows, dtype=str)
                 previews.append(f"Sheet: {sheet}\n{df.to_string(index=False)}")
             return "\n\n".join(previews)
@@ -166,7 +227,6 @@ print("✅ 已保存到 output/result.xlsx")
 
 def execute_python_code(code: str) -> tuple[str, str, bool]:
     """在子进程中安全执行 Python 代码"""
-    # 在代码头部插入 UTF-8 输出设置，解决 Windows 下中文乱码
     utf8_header = (
         "import sys, io\n"
         "sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')\n"
@@ -174,7 +234,6 @@ def execute_python_code(code: str) -> tuple[str, str, bool]:
     )
     full_code = utf8_header + code
 
-    # 写入临时文件
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".py", delete=False, encoding="utf-8"
     ) as f:
@@ -185,7 +244,7 @@ def execute_python_code(code: str) -> tuple[str, str, bool]:
         result = subprocess.run(
             [sys.executable, tmp_path],
             capture_output=True,
-            timeout=120,  # 2分钟超时
+            timeout=120,
         )
         stdout = result.stdout.decode("utf-8", errors="replace")
         stderr = result.stderr.decode("utf-8", errors="replace")
@@ -199,46 +258,37 @@ def execute_python_code(code: str) -> tuple[str, str, bool]:
 
 
 def extract_code(raw: str) -> str:
-    """
-    从 AI 返回的文本中提取 Python 代码。
-    兼容以下情况：
-      1. 纯代码（无 markdown 包裹）
-      2. ```python\\n...\\n```
-      3. ```\\n...\\n```
-      4. 代码前后有多余说明文字
-    """
-    # 优先匹配 ```python ... ``` 或 ``` ... ```
+    """从 AI 返回的文本中提取 Python 代码"""
     pattern = r"```(?:python)?\s*\n?([\s\S]*?)```"
     matches = re.findall(pattern, raw)
     if matches:
-        # 取最长的代码块（通常是主代码）
         return max(matches, key=len).strip()
-    # 没有代码块标记，直接返回原文（去首尾空白）
     return raw.strip()
 
 
-def get_output_files_after(before_files: set) -> list:
+def get_output_files_after(session_id: str, before_files: set) -> list:
     """获取执行后新增的输出文件"""
+    output_dir = get_session_output_dir(session_id)
+    workspace_dir = get_session_dir(session_id)
     current_files = set()
-    for f in OUTPUT_DIR.rglob("*"):
+    for f in output_dir.rglob("*"):
         if f.is_file():
-            current_files.add(str(f.relative_to(WORKSPACE_DIR).as_posix()))
+            current_files.add(str(f.relative_to(workspace_dir).as_posix()))
     new_files = current_files - before_files
     return sorted(new_files)
 
 
 # ============================================================
-# API 路由
+# API 路由 - 健康检查 & 配置
 # ============================================================
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "workspace": str(WORKSPACE_DIR.absolute())}
+    return {"status": "ok", "sessions_dir": str(SESSIONS_DIR.absolute())}
 
 
 @app.get("/api/config")
 def get_config():
-    """获取当前配置（不返回敏感信息）"""
     api_key = os.environ.get("ARK_API_KEY", "")
     model = os.environ.get("ARK_MODEL", "")
     base_url = os.environ.get("ARK_BASE_URL", "")
@@ -251,7 +301,6 @@ def get_config():
 
 @app.post("/api/config")
 def set_config(data: dict):
-    """设置配置"""
     if "api_key" in data and data["api_key"]:
         os.environ["ARK_API_KEY"] = data["api_key"]
     if "model" in data and data["model"]:
@@ -261,46 +310,135 @@ def set_config(data: dict):
     return {"success": True}
 
 
-@app.get("/api/workspace")
-def get_workspace():
-    """获取工作区文件列表"""
-    return get_workspace_info()
+# ============================================================
+# API 路由 - 会话管理
+# ============================================================
+
+@app.get("/api/sessions")
+def list_sessions():
+    """获取所有会话列表"""
+    sessions = load_sessions_meta()
+    # 按更新时间倒序
+    sessions.sort(key=lambda s: s.get("updated_at", ""), reverse=True)
+    return {"sessions": sessions}
 
 
-@app.post("/api/upload")
-async def upload_file(file: UploadFile = File(...)):
-    """上传文件到工作区"""
-    # 安全处理文件名
+@app.post("/api/sessions")
+def create_session(req: CreateSessionRequest):
+    """创建新会话"""
+    session_id = f"session-{uuid.uuid4().hex[:12]}"
+    now = datetime.now().isoformat()
+    name = req.name or f"新会话"
+    
+    meta = {
+        "id": session_id,
+        "name": name,
+        "created_at": now,
+        "updated_at": now,
+    }
+    
+    # 创建工作区目录
+    session_dir = get_session_dir(session_id)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "output").mkdir(exist_ok=True)
+    
+    # 保存元数据
+    sessions = load_sessions_meta()
+    sessions.append(meta)
+    save_sessions_meta(sessions)
+    
+    return meta
+
+
+@app.patch("/api/sessions/{session_id}")
+def rename_session(session_id: str, req: RenameSessionRequest):
+    """重命名会话"""
+    sessions = load_sessions_meta()
+    found = False
+    for s in sessions:
+        if s["id"] == session_id:
+            s["name"] = req.name
+            s["updated_at"] = datetime.now().isoformat()
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    save_sessions_meta(sessions)
+    return {"success": True}
+
+
+@app.delete("/api/sessions/{session_id}")
+def delete_session(session_id: str):
+    """删除会话及其工作区"""
+    sessions = load_sessions_meta()
+    new_sessions = [s for s in sessions if s["id"] != session_id]
+    if len(new_sessions) == len(sessions):
+        raise HTTPException(status_code=404, detail="会话不存在")
+    
+    # 删除工作区目录
+    session_dir = get_session_dir(session_id)
+    if session_dir.exists():
+        shutil.rmtree(session_dir)
+    
+    save_sessions_meta(new_sessions)
+    return {"success": True}
+
+
+# ============================================================
+# API 路由 - 工作区（按会话隔离）
+# ============================================================
+
+@app.get("/api/workspace/{session_id}")
+def get_workspace(session_id: str):
+    """获取指定会话的工作区文件列表"""
+    ensure_session_exists(session_id)
+    return get_workspace_info(session_id)
+
+
+@app.post("/api/upload/{session_id}")
+async def upload_file(session_id: str, file: UploadFile = File(...)):
+    """上传文件到指定会话的工作区"""
+    ensure_session_exists(session_id)
+    workspace_dir = get_session_dir(session_id)
+    
     filename = file.filename or f"upload_{uuid.uuid4().hex[:8]}"
-    # 去掉路径部分，只保留文件名
     filename = Path(filename).name
     
-    dest = WORKSPACE_DIR / filename
+    dest = workspace_dir / filename
     with open(dest, "wb") as f:
         content = await file.read()
         f.write(content)
     
-    # 如果是 xlsx，返回预览
     preview = ""
     if dest.suffix.lower() in [".xlsx", ".xls", ".csv"]:
         preview = get_file_preview(dest)
     
+    # 更新会话的 updated_at
+    sessions = load_sessions_meta()
+    for s in sessions:
+        if s["id"] == session_id:
+            s["updated_at"] = datetime.now().isoformat()
+            break
+    save_sessions_meta(sessions)
+    
     return {
         "success": True,
         "filename": filename,
-        "path": str(dest.relative_to(WORKSPACE_DIR).as_posix()),
+        "path": str(dest.relative_to(workspace_dir).as_posix()),
         "size": dest.stat().st_size,
         "preview": preview
     }
 
 
-@app.delete("/api/workspace/{filename:path}")
-def delete_file(filename: str):
-    """删除工作区文件"""
-    target = WORKSPACE_DIR / filename
-    # 安全检查：确保在工作区内
+@app.delete("/api/workspace/{session_id}/{filename:path}")
+def delete_file(session_id: str, filename: str):
+    """删除指定会话工作区中的文件"""
+    ensure_session_exists(session_id)
+    workspace_dir = get_session_dir(session_id)
+    target = workspace_dir / filename
+    
     try:
-        target.resolve().relative_to(WORKSPACE_DIR.resolve())
+        target.resolve().relative_to(workspace_dir.resolve())
     except ValueError:
         raise HTTPException(status_code=400, detail="非法路径")
     
@@ -315,10 +453,13 @@ def delete_file(filename: str):
     return {"success": True}
 
 
-@app.get("/api/preview/{filename:path}")
-def preview_file(filename: str, max_rows: int = 10):
-    """预览文件内容"""
-    target = WORKSPACE_DIR / filename
+@app.get("/api/preview/{session_id}/{filename:path}")
+def preview_file(session_id: str, filename: str, max_rows: int = 10):
+    """预览指定会话工作区中的文件"""
+    ensure_session_exists(session_id)
+    workspace_dir = get_session_dir(session_id)
+    target = workspace_dir / filename
+    
     if not target.exists():
         raise HTTPException(status_code=404, detail="文件不存在")
     
@@ -364,6 +505,32 @@ def preview_file(filename: str, max_rows: int = 10):
         return {"type": "unsupported", "message": f"不支持预览 {ext} 文件"}
 
 
+@app.get("/api/download/{session_id}/{filepath:path}")
+def download_file(session_id: str, filepath: str):
+    """下载指定会话工作区中的文件"""
+    ensure_session_exists(session_id)
+    workspace_dir = get_session_dir(session_id)
+    target = workspace_dir / filepath
+    
+    try:
+        target.resolve().relative_to(workspace_dir.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="非法路径")
+    
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="文件不存在")
+    
+    return FileResponse(
+        path=str(target),
+        filename=target.name,
+        media_type="application/octet-stream"
+    )
+
+
+# ============================================================
+# API 路由 - AI 执行
+# ============================================================
+
 @app.post("/api/execute")
 async def execute(req: ExecuteRequest):
     """
@@ -371,27 +538,27 @@ async def execute(req: ExecuteRequest):
     1. 如果提供了 code，直接执行
     2. 否则调用 AI 生成代码再执行
     """
-    # 记录执行前的输出文件
-    before_files = set()
-    for f in OUTPUT_DIR.rglob("*"):
-        if f.is_file():
-            before_files.add(str(f.relative_to(WORKSPACE_DIR).as_posix()))
-
-    workspace_info = get_workspace_info()
+    ensure_session_exists(req.session_id)
     
-    # 如果没有直接提供代码，调用 AI 生成
+    # 记录执行前的输出文件
+    output_dir = get_session_output_dir(req.session_id)
+    workspace_dir = get_session_dir(req.session_id)
+    before_files = set()
+    for f in output_dir.rglob("*"):
+        if f.is_file():
+            before_files.add(str(f.relative_to(workspace_dir).as_posix()))
+
+    workspace_info = get_workspace_info(req.session_id)
+    
     if not req.code:
         client, model = get_ai_client()
         system_prompt = build_system_prompt(workspace_info)
         
-        # 构建消息历史
         messages = [{"role": "system", "content": system_prompt}]
         
-        # 加入历史对话
         if req.history:
             messages.extend(req.history)
         
-        # 加入当前指令
         user_content = req.instruction
         if req.context and req.context.get("file_preview"):
             user_content += f"\n\n文件预览:\n{req.context['file_preview']}"
@@ -418,11 +585,16 @@ async def execute(req: ExecuteRequest):
     else:
         code = req.code
     
-    # 执行代码
     stdout, stderr, success = execute_python_code(code)
+    new_files = get_output_files_after(req.session_id, before_files)
     
-    # 获取新生成的文件
-    new_files = get_output_files_after(before_files)
+    # 更新会话的 updated_at
+    sessions = load_sessions_meta()
+    for s in sessions:
+        if s["id"] == req.session_id:
+            s["updated_at"] = datetime.now().isoformat()
+            break
+    save_sessions_meta(sessions)
     
     return ExecuteResponse(
         code=code,
@@ -435,11 +607,12 @@ async def execute(req: ExecuteRequest):
 
 @app.post("/api/generate-code")
 async def generate_code_only(req: ExecuteRequest):
-    """只生成代码，不执行（用于预览）"""
+    """只生成代码，不执行"""
     if not os.environ.get("ARK_API_KEY"):
         raise HTTPException(status_code=400, detail="未配置 API Key")
     
-    workspace_info = get_workspace_info()
+    ensure_session_exists(req.session_id)
+    workspace_info = get_workspace_info(req.session_id)
     client, model = get_ai_client()
     system_prompt = build_system_prompt(workspace_info)
     
@@ -456,56 +629,6 @@ async def generate_code_only(req: ExecuteRequest):
         )
         raw = response.choices[0].message.content.strip()
         return {"code": extract_code(raw)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI 调用失败: {e}")
-
-
-@app.get("/api/download/{filepath:path}")
-def download_file(filepath: str):
-    """下载文件"""
-    target = WORKSPACE_DIR / filepath
-    try:
-        target.resolve().relative_to(WORKSPACE_DIR.resolve())
-    except ValueError:
-        raise HTTPException(status_code=400, detail="非法路径")
-    
-    if not target.exists():
-        raise HTTPException(status_code=404, detail="文件不存在")
-    
-    return FileResponse(
-        path=str(target),
-        filename=target.name,
-        media_type="application/octet-stream"
-    )
-
-
-@app.post("/api/chat")
-async def chat(data: dict):
-    """
-    纯对话接口（不执行代码），用于询问、解释等
-    """
-    if not os.environ.get("ARK_API_KEY"):
-        raise HTTPException(status_code=400, detail="未配置 API Key")
-    
-    messages = data.get("messages", [])
-    workspace_info = get_workspace_info()
-    
-    client, model = get_ai_client()
-    
-    system = f"""你是一个专业的数据处理助手，帮助用户处理 Excel 和 Word 文件。
-当前工作区文件:
-{json.dumps([f['path'] for f in workspace_info['files']], ensure_ascii=False)}
-
-请用中文回答用户的问题。如果用户需要执行操作，告诉他们可以直接描述需求，系统会自动生成并执行代码。"""
-    
-    full_messages = [{"role": "system", "content": system}] + messages
-    
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=full_messages,
-        )
-        return {"content": response.choices[0].message.content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 调用失败: {e}")
 

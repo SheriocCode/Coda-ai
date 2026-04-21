@@ -1,8 +1,8 @@
 {
-  "name": "ai-excel-helper",
+  "name": "coda",
   "private": true,
   "version": "1.0.0",
-  "description": "AI 驱动的 Excel/Word 处理桌面工具",
+  "description": "Coda — AI 驱动的文档自动化处理桌面工具",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -20,7 +20,8 @@
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
     "react-syntax-highlighter": "^15.5.0",
-    "remark-gfm": "^4.0.0"
+    "remark-gfm": "^4.0.0",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
@@ -34,8 +35,8 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.aiexcelhelper.app",
-    "productName": "AI Excel Helper",
+    "appId": "com.coda.app",
+    "productName": "Coda",
     "directories": {
       "output": "dist-electron"
     },
@@ -51,14 +52,15 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "public/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "AI Excel Helper"
+      "shortcutName": "Coda"
     },
     "mac": {
       "target": "dmg"

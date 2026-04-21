@@ -23,6 +23,7 @@ export interface WorkspaceFile {
 export interface WorkspaceInfo {
   files: WorkspaceFile[]
   workspace_dir: string
+  session_id: string
 }
 
 export interface ExecuteResult {
@@ -52,50 +53,90 @@ export interface Config {
   base_url: string
 }
 
-// ---- API 函数 ----
+export interface SessionMeta {
+  id: string
+  name: string
+  created_at: string
+  updated_at: string
+}
 
-export async function getWorkspace(): Promise<WorkspaceInfo> {
-  const res = await api.get('/workspace')
+// ---- 会话管理 API ----
+
+export async function getSessions(): Promise<{ sessions: SessionMeta[] }> {
+  const res = await api.get('/sessions')
   return res.data
 }
 
-export async function uploadFile(file: File): Promise<{ success: boolean; filename: string; path: string; preview: string }> {
+export async function createSession(name?: string): Promise<SessionMeta> {
+  const res = await api.post('/sessions', { name })
+  return res.data
+}
+
+export async function renameSession(sessionId: string, name: string): Promise<void> {
+  await api.patch(`/sessions/${sessionId}`, { name })
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await api.delete(`/sessions/${sessionId}`)
+}
+
+// ---- 工作区 API（按会话隔离）----
+
+export async function getWorkspace(sessionId: string): Promise<WorkspaceInfo> {
+  const res = await api.get(`/workspace/${sessionId}`)
+  return res.data
+}
+
+export async function uploadFile(
+  sessionId: string,
+  file: File
+): Promise<{ success: boolean; filename: string; path: string; preview: string }> {
   const form = new FormData()
   form.append('file', file)
-  const res = await api.post('/upload', form, {
+  const res = await api.post(`/upload/${sessionId}`, form, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
   return res.data
 }
 
-export async function deleteFile(path: string): Promise<void> {
-  await api.delete(`/workspace/${path}`)
+export async function deleteFile(sessionId: string, path: string): Promise<void> {
+  await api.delete(`/workspace/${sessionId}/${path}`)
 }
 
-export async function previewFile(path: string, maxRows = 20): Promise<PreviewResult> {
-  const res = await api.get(`/preview/${path}`, { params: { max_rows: maxRows } })
+export async function previewFile(
+  sessionId: string,
+  path: string,
+  maxRows = 20
+): Promise<PreviewResult> {
+  const res = await api.get(`/preview/${sessionId}/${path}`, { params: { max_rows: maxRows } })
   return res.data
 }
 
 export async function executeInstruction(
+  sessionId: string,
   instruction: string,
   history?: Array<{ role: string; content: string }>,
   context?: Record<string, unknown>
 ): Promise<ExecuteResult> {
-  const res = await api.post('/execute', { instruction, history, context })
+  const res = await api.post('/execute', { session_id: sessionId, instruction, history, context })
   return res.data
 }
 
-export async function executeCode(code: string, instruction: string): Promise<ExecuteResult> {
-  const res = await api.post('/execute', { instruction, code })
+export async function executeCode(
+  sessionId: string,
+  code: string,
+  instruction: string
+): Promise<ExecuteResult> {
+  const res = await api.post('/execute', { session_id: sessionId, instruction, code })
   return res.data
 }
 
 export async function generateCode(
+  sessionId: string,
   instruction: string,
   history?: Array<{ role: string; content: string }>
 ): Promise<{ code: string }> {
-  const res = await api.post('/generate-code', { instruction, history })
+  const res = await api.post('/generate-code', { session_id: sessionId, instruction, history })
   return res.data
 }
 
@@ -108,8 +149,8 @@ export async function setConfig(cfg: { api_key?: string; model?: string; base_ur
   await api.post('/config', cfg)
 }
 
-export async function downloadFile(path: string): Promise<void> {
-  const url = `${BASE}/download/${path}`
+export function downloadFile(sessionId: string, path: string): void {
+  const url = `${BASE}/download/${sessionId}/${path}`
   const a = document.createElement('a')
   a.href = url
   a.download = path.split('/').pop() || path

@@ -1,13 +1,26 @@
 import { useState, useEffect } from 'react'
+import {
+  Bot,
+  User,
+  Copy,
+  Pencil,
+  Eye,
+  Play,
+  ChevronDown,
+  ChevronRight,
+  Download,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import type { Message } from '../App'
 import { downloadFile } from '../api'
 
 interface Props {
   message: Message
+  sessionId: string
   onRetry: (code: string, instruction: string) => void
 }
 
-export function MessageBubble({ message, onRetry }: Props) {
+export function MessageBubble({ message, sessionId, onRetry }: Props) {
   const [showCode, setShowCode] = useState(false)
   const [showOutput, setShowOutput] = useState(true)
   const [editingCode, setEditingCode] = useState(false)
@@ -24,7 +37,9 @@ export function MessageBubble({ message, onRetry }: Props) {
   if (message.isLoading) {
     return (
       <div className="message assistant">
-        <div className="message-avatar">🤖</div>
+        <div className="message-avatar">
+          <Bot size={18} strokeWidth={1.5} />
+        </div>
         <div className="message-body">
           <div className="loading-dots">
             <span></span><span></span><span></span>
@@ -41,7 +56,11 @@ export function MessageBubble({ message, onRetry }: Props) {
 
   return (
     <div className={`message ${isUser ? 'user' : 'assistant'}`}>
-      {!isUser && <div className="message-avatar">🤖</div>}
+      {!isUser && (
+        <div className="message-avatar">
+          <Bot size={18} strokeWidth={1.5} />
+        </div>
+      )}
 
       <div className="message-body">
         {/* 主要内容 */}
@@ -57,7 +76,11 @@ export function MessageBubble({ message, onRetry }: Props) {
                 className="toggle-btn"
                 onClick={() => setShowCode(!showCode)}
               >
-                {showCode ? '▼' : '▶'} Python 代码
+                {showCode
+                  ? <ChevronDown size={12} strokeWidth={2} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
+                  : <ChevronRight size={12} strokeWidth={2} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
+                }
+                Python 代码
               </button>
               <div className="code-actions">
                 {showCode && (
@@ -66,22 +89,28 @@ export function MessageBubble({ message, onRetry }: Props) {
                       className="code-action-btn"
                       onClick={() => {
                         navigator.clipboard.writeText(displayCode)
+                        toast.success('代码已复制')
                       }}
                     >
-                      📋 复制
+                      <Copy size={11} strokeWidth={1.5} style={{ display: 'inline', marginRight: 3, verticalAlign: 'middle' }} />
+                      复制
                     </button>
                     <button
                       className="code-action-btn"
                       onClick={() => setEditingCode(!editingCode)}
                     >
-                      {editingCode ? '👁️ 预览' : '✏️ 编辑'}
+                      {editingCode
+                        ? <><Eye size={11} strokeWidth={1.5} style={{ display: 'inline', marginRight: 3, verticalAlign: 'middle' }} />预览</>
+                        : <><Pencil size={11} strokeWidth={1.5} style={{ display: 'inline', marginRight: 3, verticalAlign: 'middle' }} />编辑</>
+                      }
                     </button>
                     {editingCode && (
                       <button
                         className="code-action-btn run"
                         onClick={() => onRetry(codeValue, '重新执行修改后的代码')}
                       >
-                        ▶ 运行
+                        <Play size={11} strokeWidth={2} style={{ display: 'inline', marginRight: 3, verticalAlign: 'middle' }} />
+                        运行
                       </button>
                     )}
                   </>
@@ -114,7 +143,11 @@ export function MessageBubble({ message, onRetry }: Props) {
                 className="toggle-btn"
                 onClick={() => setShowOutput(!showOutput)}
               >
-                {showOutput ? '▼' : '▶'} 执行输出
+                {showOutput
+                  ? <ChevronDown size={12} strokeWidth={2} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
+                  : <ChevronRight size={12} strokeWidth={2} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
+                }
+                执行输出
               </button>
             </div>
             {showOutput && (
@@ -133,14 +166,15 @@ export function MessageBubble({ message, onRetry }: Props) {
         {/* 输出文件 */}
         {message.outputFiles && message.outputFiles.length > 0 && (
           <div className="output-files">
-            <div className="output-files-label">📥 生成的文件：</div>
+            <div className="output-files-label">生成的文件：</div>
             {message.outputFiles.map(f => (
               <button
                 key={f}
                 className="output-file-btn"
-                onClick={() => downloadFile(f)}
+                onClick={() => downloadFile(sessionId, f)}
               >
-                ⬇️ {f.split('/').pop()}
+                <Download size={11} strokeWidth={1.5} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
+                {f.split('/').pop()}
               </button>
             ))}
           </div>
@@ -152,7 +186,11 @@ export function MessageBubble({ message, onRetry }: Props) {
         </div>
       </div>
 
-      {isUser && <div className="message-avatar user-avatar">👤</div>}
+      {isUser && (
+        <div className="message-avatar user-avatar">
+          <User size={18} strokeWidth={1.5} />
+        </div>
+      )}
     </div>
   )
 }

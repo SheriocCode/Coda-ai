@@ -52,8 +52,9 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'default',
-    title: 'AI Excel Helper',
-    backgroundColor: '#0f172a',
+    title: 'Coda',
+    icon: path.join(__dirname, '../public/icon.png'),
+    backgroundColor: '#ffffff',
   })
 
   if (isDev) {

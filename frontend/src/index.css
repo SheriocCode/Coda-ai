@@ -5,23 +5,95 @@
 }
 
 :root {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
-  --border: #334155;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --accent: #6366f1;
-  --accent-hover: #4f46e5;
-  --accent-light: #818cf8;
-  --success: #10b981;
-  --error: #ef4444;
-  --warning: #f59e0b;
-  --info: #3b82f6;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+  /* ── Primary ── */
+  --color-vercel-black:  #171717;   /* Vercel Black — 主文字 & 深色背景 */
+  --color-pure-white:    #ffffff;   /* Pure White — 页面背景 / 卡片 */
+  --color-true-black:    #000000;   /* True Black — console/code 上下文 */
+
+  /* ── Workflow Accent Colors ── */
+  --color-ship-red:      #ff5b4f;   /* Ship Red — 生产部署流程 */
+  --color-preview-pink:  #de1d8d;   /* Preview Pink — 预览部署流程 */
+  --color-develop-blue:  #0a72ef;   /* Develop Blue — 开发流程 */
+
+  /* ── Console / Code Colors ── */
+  --color-console-blue:  #0070f3;   /* Console Blue — 语法高亮蓝 */
+  --color-console-purple:#7928ca;   /* Console Purple — 语法高亮紫 */
+  --color-console-pink:  #eb367f;   /* Console Pink — 语法高亮粉 */
+
+  /* ── Interactive ── */
+  --color-link-blue:     #0072f5;   /* Link Blue — 主链接色 */
+  --color-focus-blue:    hsla(212, 100%, 48%, 1); /* Focus Blue — 焦点环 */
+  --color-ring-blue:     rgba(147, 197, 253, 0.5); /* Ring Blue — Tailwind ring */
+
+  /* ── Neutral Scale ── */
+  --color-gray-900:      #171717;   /* Gray 900 — 主文字 / 标题 */
+  --color-gray-600:      #4d4d4d;   /* Gray 600 — 次要文字 / 描述 */
+  --color-gray-500:      #666666;   /* Gray 500 — 三级文字 / 静音链接 */
+  --color-gray-400:      #808080;   /* Gray 400 — 占位符 / 禁用状态 */
+  --color-gray-100:      #ebebeb;   /* Gray 100 — 边框 / 卡片轮廓 / 分隔线 */
+  --color-gray-50:       #fafafa;   /* Gray 50 — 微妙表面色调 / 内阴影高光 */
+
+  /* ── Surface & Overlay ── */
+  --color-overlay-backdrop: hsla(0, 0%, 98%, 1);  /* 模态/对话框背景 */
+  --color-selection-text:   hsla(0, 0%, 95%, 1);  /* 文字选中高亮 */
+  --color-badge-blue-bg:    #ebf5ff;               /* 徽章蓝色背景 */
+  --color-badge-blue-text:  #0068d6;               /* 徽章蓝色文字 */
+
+  /* ── Semantic Aliases（供组件直接使用）── */
+  --bg-primary:          var(--color-pure-white);
+  --bg-secondary:        var(--color-pure-white);
+  --bg-tertiary:         var(--color-gray-50);
+  --bg-dark:             var(--color-vercel-black);
+  --bg-dark-surface:     #1a1a1a;
+
+  /* Shadow-as-border 技术 — 替代传统 CSS border */
+  --border-shadow:       rgba(0, 0, 0, 0.08) 0px 0px 0px 1px;
+  --border-shadow-light: rgb(235, 235, 235) 0px 0px 0px 1px;
+
+  /* 语义化边框变量（兼容组件中的 border 属性写法） */
+  --border:              var(--color-gray-100);
+  --border-warm:         var(--color-gray-100);
+  --border-dark:         #2e2e2e;
+
+  --text-primary:        var(--color-gray-900);
+  --text-secondary:      var(--color-gray-600);
+  --text-muted:          var(--color-gray-500);
+  --text-dark-primary:   var(--color-pure-white);
+  --text-dark-secondary: var(--color-gray-400);
+
+  --accent:              var(--color-vercel-black);
+  --accent-hover:        #2e2e2e;
+  --accent-light:        var(--color-link-blue);
+
+  --success:             #0070f3;   /* 使用 Console Blue 作为成功色 */
+  --error:               #e00;      /* 标准错误红 */
+  --warning:             #f5a623;   /* 琥珀警告 */
+  --info:                var(--color-focus-blue);
+
+  /* ── Radius Scale ── */
+  --radius-sm:           4px;       /* Subtle */
+  --radius:              6px;       /* Standard — 按钮 / 功能元素 */
+  --radius-lg:           8px;       /* Comfortable — 卡片 / 列表项 */
+  --radius-xl:           12px;      /* Image — 特色卡片 / 图片容器 */
+  --radius-2xl:          64px;      /* Large — 标签导航胶囊 */
+  --radius-3xl:          9999px;    /* Full Pill — 徽章 / 状态标签 */
+
+  /* ── Shadow & Depth ── */
+  /* Level 1: Ring — shadow-as-border */
+  --shadow-ring:         rgba(0, 0, 0, 0.08) 0px 0px 0px 1px;
+  /* Level 1b: Light Ring */
+  --shadow-ring-light:   rgb(235, 235, 235) 0px 0px 0px 1px;
+  /* Level 2: Subtle Card */
+  --shadow-card:         rgba(0, 0, 0, 0.08) 0px 0px 0px 1px,
+                         rgba(0, 0, 0, 0.04) 0px 2px 2px;
+  /* Level 3: Full Card */
+  --shadow-card-full:    rgba(0, 0, 0, 0.08) 0px 0px 0px 1px,
+                         rgba(0, 0, 0, 0.04) 0px 2px 2px,
+                         rgba(0, 0, 0, 0.04) 0px 8px 8px -8px,
+                         #fafafa 0px 0px 0px 1px;
+  /* 兼容旧变量名 */
+  --shadow-whisper:      rgba(0, 0, 0, 0.04) 0px 2px 2px;
+  --shadow:              var(--shadow-card);
 }
 
 html, body, #root {
@@ -31,12 +103,14 @@ html, body, #root {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Microsoft YaHei', sans-serif;
+  font-family: 'Geist', 'Inter', Arial, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', -apple-system, BlinkMacSystemFont,
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.5;
+  font-feature-settings: "liga" 1;
 }
 
 ::-webkit-scrollbar {
@@ -47,11 +121,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-tertiary);
+  background: var(--color-gray-100);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--color-gray-400);
 }
 
 button {
@@ -69,6 +143,34 @@ input, textarea {
 }
 
 code, pre {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
+  font-family: 'Geist Mono', 'JetBrains Mono', 'Fira Code', ui-monospace,
+    SFMono-Regular, 'Roboto Mono', Menlo, Monaco, 'Liberation Mono',
+    'DejaVu Sans Mono', 'Courier New', monospace;
+  font-feature-settings: "liga" 1;
 }
 
+/* ── Lucide Icon Utilities ── */
+
+/* Loader2 旋转动画 */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+  display: block;
+}
+
+/* 图标按钮内 SVG 垂直居中 */
+.icon-btn,
+.file-action-btn,
+.preview-action-btn,
+.modal-close,
+.clear-btn,
+.refresh-btn,
+.code-action-btn,
+.toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

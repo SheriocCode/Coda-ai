@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
+import { Settings, X, CheckCircle, AlertTriangle } from 'lucide-react'
 import type { Config } from '../api'
 import { setConfig } from '../api'
 
@@ -25,12 +27,14 @@ export function SettingsModal({ config, onClose, onSaved }: Props) {
       })
       setSaved(true)
       onSaved()
+      toast.success('设置已保存')
       setTimeout(() => {
         setSaved(false)
         onClose()
       }, 1000)
     } catch (e) {
       console.error('保存失败', e)
+      toast.error('保存失败，请检查配置后重试')
     } finally {
       setSaving(false)
     }
@@ -40,8 +44,13 @@ export function SettingsModal({ config, onClose, onSaved }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>⚙️ 设置</h2>
-          <button className="modal-close" onClick={onClose}>✕</button>
+          <h2>
+            <Settings size={15} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+            设置
+          </h2>
+          <button className="modal-close" onClick={onClose}>
+            <X size={15} strokeWidth={1.5} />
+          </button>
         </div>
 
         <div className="modal-body">
@@ -89,7 +98,10 @@ export function SettingsModal({ config, onClose, onSaved }: Props) {
           <div className="form-group">
             <label>当前状态</label>
             <div className={`status-badge ${config?.has_api_key ? 'ok' : 'warn'}`}>
-              {config?.has_api_key ? '✅ API Key 已配置' : '⚠️ 未配置 API Key'}
+              {config?.has_api_key
+                ? <><CheckCircle size={12} strokeWidth={2} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />API Key 已配置</>
+                : <><AlertTriangle size={12} strokeWidth={2} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />未配置 API Key</>
+              }
             </div>
           </div>
         </div>

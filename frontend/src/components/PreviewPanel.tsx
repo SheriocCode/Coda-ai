@@ -1,21 +1,23 @@
 import { useState, useEffect, useRef } from 'react'
+import { Download, X, AlertCircle } from 'lucide-react'
 import type { WorkspaceFile, PreviewResult, SheetData } from '../api'
 import { previewFile, downloadFile, api } from '../api'
 import { renderAsync } from 'docx-preview'
 
 interface Props {
   file: WorkspaceFile | null
+  sessionId: string
   onClose: () => void
   width?: number
 }
 
-export function PreviewPanel({ file, onClose, width }: Props) {
+export function PreviewPanel({ file, sessionId, onClose, width }: Props) {
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [activeSheet, setActiveSheet] = useState<string>('')
 
   useEffect(() => {
-    if (!file) {
+    if (!file || !sessionId) {
       setPreview(null)
       return
     }
@@ -28,7 +30,7 @@ export function PreviewPanel({ file, onClose, width }: Props) {
       setPreview({ type: 'docx' })
       setLoading(false)
     } else {
-      previewFile(file.path, 50)
+      previewFile(sessionId, file.path, 50)
         .then(res => {
           setPreview(res)
           if (res.sheets) {
@@ -40,7 +42,7 @@ export function PreviewPanel({ file, onClose, width }: Props) {
         })
         .finally(() => setLoading(false))
     }
-  }, [file])
+  }, [file, sessionId])
 
   if (!file) {
     return null
@@ -56,17 +58,17 @@ export function PreviewPanel({ file, onClose, width }: Props) {
         <div className="preview-actions">
           <button
             className="preview-action-btn"
-            onClick={() => downloadFile(file.path)}
+            onClick={() => downloadFile(sessionId, file.path)}
             title="下载"
           >
-            ⬇️
+            <Download size={14} strokeWidth={1.5} />
           </button>
           <button
             className="preview-action-btn"
             onClick={onClose}
             title="关闭"
           >
-            ✕
+            <X size={14} strokeWidth={1.5} />
           </button>
         </div>
       </div>
@@ -91,9 +93,12 @@ export function PreviewPanel({ file, onClose, width }: Props) {
                 onSheetChange={setActiveSheet}
               />
             ) : preview.type === 'docx' ? (
-              <DocxPreview filePath={file.path} />
+              <DocxPreview sessionId={sessionId} filePath={file.path} />
             ) : preview.type === 'error' ? (
-              <div className="preview-error">❌ {preview.message}</div>
+              <div className="preview-error">
+                <AlertCircle size={14} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+                {preview.message}
+              </div>
             ) : (
               <div className="preview-unsupported">
                 不支持预览此文件类型
@@ -107,7 +112,7 @@ export function PreviewPanel({ file, onClose, width }: Props) {
 }
 
 // ── Word 文档预览组件（使用 docx-preview 渲染富文本）────────────
-function DocxPreview({ filePath }: { filePath: string }) {
+function DocxPreview({ sessionId, filePath }: { sessionId: string; filePath: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -118,7 +123,7 @@ function DocxPreview({ filePath }: { filePath: string }) {
     setError(null)
 
     // 通过下载接口获取 docx 二进制数据
-    api.get(`/download/${filePath}`, { responseType: 'arraybuffer' })
+    api.get(`/download/${sessionId}/${filePath}`, { responseType: 'arraybuffer' })
       .then(async (res) => {
         const blob = new Blob([res.data], {
           type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -144,10 +149,15 @@ function DocxPreview({ filePath }: { filePath: string }) {
         setError(`预览失败: ${e.message || e}`)
       })
       .finally(() => setLoading(false))
-  }, [filePath])
+  }, [sessionId, filePath])
 
   if (error) {
-    return <div className="preview-error">❌ {error}</div>
+    return (
+      <div className="preview-error">
+        <AlertCircle size={14} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: 'middle' }} />
+        {error}
+      </div>
+    )
   }
 
   return (
