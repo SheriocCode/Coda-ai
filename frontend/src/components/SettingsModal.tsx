@@ -174,9 +174,9 @@ function ApiPanel({
             className="form-input"
             value={model}
             onChange={e => setModel(e.target.value)}
-            placeholder="doubao-seed-2-0-pro-260215"
+            placeholder="deepseek-v3-2-251201"
           />
-          <div className="form-hint">推荐使用 doubao-seed-2-0-pro-260215</div>
+          <div className="form-hint">推荐使用 deepseek-v3-2-251201</div>
         </div>
       </div>
 

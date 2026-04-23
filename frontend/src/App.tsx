@@ -12,6 +12,16 @@ import './App.css'
 
 const TOUR_DONE_KEY = 'coda_tour_done'
 
+// 单次执行结果（用于步骤内历史版本）
+export interface ExecRecord {
+  code: string
+  stdout: string
+  stderr: string
+  success: boolean
+  outputFiles: string[]
+  timestamp: number
+}
+
 // Agent 单步骤数据
 export interface AgentStep {
   iteration: number
@@ -22,21 +32,21 @@ export interface AgentStep {
   stderr?: string         // 错误输出
   success?: boolean       // 执行是否成功
   newFiles?: string[]     // 本步骤新生成的文件
+  execHistory?: ExecRecord[]  // 用户手动执行的历史版本
 }
 
 export interface Message {
   id: string
   role: 'user' | 'assistant' | 'system'
   content: string
-  // 旧版单次执行字段（兼容保留）
-  code?: string
-  stdout?: string
-  stderr?: string
-  success?: boolean
-  outputFiles?: string[]
   timestamp: number
   isLoading?: boolean
+  // 手动执行代码的输出
+  stdout?: string
+  stderr?: string
   // Agent 循环字段
+  success?: boolean           // 是否成功（用于消息样式）
+  outputFiles?: string[]      // 生成的输出文件列表
   isAgent?: boolean           // 是否为 Agent 模式消息
   agentSteps?: AgentStep[]    // Agent 执行步骤列表
   agentStatus?: 'running' | 'done' | 'error'  // Agent 当前状态
@@ -48,10 +58,10 @@ interface SessionState {
   files: WorkspaceFile[]
 }
 
-const WELCOME_MESSAGE = (name: string): Message => ({
+const WELCOME_MESSAGE = (_name?: string): Message => ({
   id: 'welcome',
   role: 'assistant',
-  content: `你好！我是 **Coda**，你的 AI 文档自动化助手。\n\n当前会话：**${name}**\n\n你可以：\n- **上传文件**（xlsx、docx、csv 等）到左侧工作区\n- **用自然语言描述**你想做的操作，我会自动生成并执行 Python 代码\n- **点击文件**预览内容\n- **下载**生成的结果文件\n\n**示例指令**："把附件4登分模板.xlsx中的数据按学号排序后导出"`,
+  content: `你好！我是 **Coda**，你的 AI 文档自动化助手。\n\n你可以：\n- **上传文件**（xlsx、docx、csv 等）到左侧工作区\n- **用自然语言描述**你想做的操作，我会自动生成并执行 Python 代码\n- **点击文件**预览内容\n- **下载**生成的结果文件\n\n**示例指令**："把附件4登分模板.xlsx中的数据按学号排序后导出"`,
   timestamp: Date.now(),
 })
 
@@ -74,6 +84,7 @@ function App() {
   const isDragging = useRef(false)
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
+  const initCalledRef = useRef(false)
 
   // 工作区侧边栏宽度拖拽
   const WORKSPACE_MIN_WIDTH = 160
@@ -163,6 +174,10 @@ function App() {
 
   // ---- 初始化 ----
   useEffect(() => {
+    // 防止 React StrictMode 开发模式下 useEffect 执行两次导致重复创建 session
+    if (initCalledRef.current) return
+    initCalledRef.current = true
+
     const init = async () => {
       await refreshConfig()
       const list = await refreshSessions()

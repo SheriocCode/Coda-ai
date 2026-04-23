@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Trash2, Send, StopCircle } from 'lucide-react'
-import type { Message, AgentStep } from '../App'
+import type { Message, AgentStep, ExecRecord } from '../App'
 import type { WorkspaceFile, Config, AgentEvent } from '../api'
 import { runAgent, executeCode } from '../api'
 import { MessageBubble } from './MessageBubble'
@@ -29,15 +29,12 @@ export function ChatPanel({
   const [isLoading, setIsLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  // 用于取消 Agent 请求
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // 自动滚动到底部
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // 自动调整 textarea 高度
   const adjustHeight = () => {
     const ta = textareaRef.current
     if (!ta) return
@@ -59,14 +56,12 @@ export function ChatPanel({
     setMessages(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m))
   }, [setMessages])
 
-  // 构建对话历史（用于 AI 上下文）
   const buildHistory = useCallback(() => {
     return messages
       .filter(m => m.role !== 'system' && !m.isLoading && m.id !== 'welcome')
       .slice(-10)
       .map(m => {
         if (m.isAgent && m.agentSteps && m.agentSteps.length > 0) {
-          // Agent 消息：把步骤摘要作为 assistant 内容
           const stepsSummary = m.agentSteps.map((s, i) => {
             const parts = [`步骤${i + 1}:`]
             if (s.thought) parts.push(`思考: ${s.thought}`)
@@ -81,12 +76,78 @@ export function ChatPanel({
         }
         return {
           role: m.role as 'user' | 'assistant',
-          content: m.code
-            ? `${m.content}\n\n生成的代码:\n\`\`\`python\n${m.code}\n\`\`\`\n执行结果:\n${m.stdout || ''}\n${m.stderr || ''}`
-            : m.content
+          content: m.content
         }
       })
   }, [messages])
+
+  // 模式1：新消息（在对话中追加一条新消息显示执行结果）
+  const handleRunCodeNewMsg = useCallback(async (code: string) => {
+    const loadingId = addMessage({
+      role: 'assistant',
+      content: '',
+      isLoading: true,
+    })
+    setIsLoading(true)
+    try {
+      const result = await executeCode(sessionId, code)
+      updateMessage(loadingId, {
+        isLoading: false,
+        content: result.success ? '✅ 执行成功' : '❌ 执行出错',
+        success: result.success,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        outputFiles: result.output_files,
+      })
+      if (result.output_files.length > 0) {
+        onRefreshWorkspace()
+      }
+    } catch {
+      updateMessage(loadingId, {
+        isLoading: false,
+        content: '❌ 执行失败',
+        success: false,
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }, [sessionId, addMessage, updateMessage, onRefreshWorkspace])
+
+  // 模式2：更新步骤内历史（在原步骤卡片中追加一条执行记录）
+  const handleRunCodeInStep = useCallback(async (
+    msgId: string,
+    iteration: number,
+    code: string,
+  ) => {
+    setIsLoading(true)
+    try {
+      const result = await executeCode(sessionId, code)
+      const record: ExecRecord = {
+        code,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        success: result.success,
+        outputFiles: result.output_files,
+        timestamp: Date.now(),
+      }
+      setMessages(prev => prev.map(m => {
+        if (m.id !== msgId) return m
+        const steps = (m.agentSteps || []).map(s => {
+          if (s.iteration !== iteration) return s
+          return {
+            ...s,
+            execHistory: [...(s.execHistory || []), record],
+          }
+        })
+        return { ...m, agentSteps: steps }
+      }))
+      if (result.output_files.length > 0) {
+        onRefreshWorkspace()
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }, [sessionId, setMessages, onRefreshWorkspace])
 
   const handleSend = async () => {
     const instruction = input.trim()
@@ -97,7 +158,6 @@ export function ChatPanel({
 
     addMessage({ role: 'user', content: instruction })
 
-    // 创建 Agent 消息占位
     const agentMsgId = addMessage({
       role: 'assistant',
       content: '',
@@ -109,11 +169,9 @@ export function ChatPanel({
 
     setIsLoading(true)
 
-    // 创建 AbortController 用于取消
     const abortController = new AbortController()
     abortControllerRef.current = abortController
 
-    // 当前步骤的临时状态（用于在 observation 到来前聚合 thought + action）
     let currentStep: Partial<AgentStep> & { iteration: number } | null = null
 
     try {
@@ -126,21 +184,15 @@ export function ChatPanel({
         (event: AgentEvent) => {
           switch (event.type) {
             case 'start':
-              updateMessage(agentMsgId, {
-                agentThinking: '🚀 Agent 开始工作...',
-              })
+              updateMessage(agentMsgId, { agentThinking: '🚀 Agent 开始工作...' })
               break
 
             case 'thinking':
-              updateMessage(agentMsgId, {
-                agentThinking: `⏳ 第 ${event.iteration} 轮思考中...`,
-              })
-              // 初始化新步骤
+              updateMessage(agentMsgId, { agentThinking: `⏳ 第 ${event.iteration} 轮思考中...` })
               currentStep = { iteration: event.iteration }
               break
 
             case 'thought':
-              // 更新当前步骤的思考内容
               if (currentStep && currentStep.iteration === event.iteration) {
                 currentStep.thought = event.content
               }
@@ -150,18 +202,14 @@ export function ChatPanel({
               break
 
             case 'action':
-              // 更新当前步骤的行动内容
               if (currentStep && currentStep.iteration === event.iteration) {
                 currentStep.description = event.description
                 currentStep.code = event.code
               }
-              updateMessage(agentMsgId, {
-                agentThinking: `⚡ ${event.description}`,
-              })
+              updateMessage(agentMsgId, { agentThinking: `⚡ ${event.description}` })
               break
 
             case 'observation': {
-              // 步骤完成，将完整步骤加入列表
               const completedStep: AgentStep = {
                 iteration: event.iteration,
                 thought: currentStep?.thought,
@@ -177,7 +225,6 @@ export function ChatPanel({
               setMessages(prev => prev.map(m => {
                 if (m.id !== agentMsgId) return m
                 const existingSteps = m.agentSteps || []
-                // 避免重复添加同一轮次
                 const filtered = existingSteps.filter(s => s.iteration !== event.iteration)
                 return {
                   ...m,
@@ -188,7 +235,6 @@ export function ChatPanel({
                 }
               }))
 
-              // 如果有新文件，刷新工作区
               if (event.new_files && event.new_files.length > 0) {
                 onRefreshWorkspace()
               }
@@ -252,39 +298,6 @@ export function ChatPanel({
     abortControllerRef.current?.abort()
   }
 
-  const handleRetryWithCode = async (code: string, instruction: string) => {
-    const loadingId = addMessage({
-      role: 'assistant',
-      content: '',
-      isLoading: true,
-    })
-    setIsLoading(true)
-
-    try {
-      const result = await executeCode(sessionId, code, instruction)
-      updateMessage(loadingId, {
-        isLoading: false,
-        content: result.success ? '✅ 执行成功' : '❌ 执行出错',
-        code: result.code,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        success: result.success,
-        outputFiles: result.output_files,
-      })
-      if (result.output_files.length > 0) {
-        onRefreshWorkspace()
-      }
-    } catch {
-      updateMessage(loadingId, {
-        isLoading: false,
-        content: '❌ 执行失败',
-        success: false,
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -328,7 +341,8 @@ export function ChatPanel({
             key={msg.id}
             message={msg}
             sessionId={sessionId}
-            onRetry={handleRetryWithCode}
+            onRunCodeNewMsg={handleRunCodeNewMsg}
+            onRunCodeInStep={handleRunCodeInStep}
           />
         ))}
         <div ref={bottomRef} />

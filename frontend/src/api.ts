@@ -26,14 +26,6 @@ export interface WorkspaceInfo {
   session_id: string
 }
 
-export interface ExecuteResult {
-  code: string
-  stdout: string
-  stderr: string
-  success: boolean
-  output_files: string[]
-}
-
 export interface SheetData {
   columns: string[]
   rows: string[][]
@@ -186,31 +178,19 @@ export async function previewFile(
   return res.data
 }
 
-export async function executeInstruction(
-  sessionId: string,
-  instruction: string,
-  history?: Array<{ role: string; content: string }>,
-  context?: Record<string, unknown>
-): Promise<ExecuteResult> {
-  const res = await api.post('/execute', { session_id: sessionId, instruction, history, context })
-  return res.data
+export interface ExecuteResult {
+  code: string
+  stdout: string
+  stderr: string
+  success: boolean
+  output_files: string[]
 }
 
 export async function executeCode(
   sessionId: string,
   code: string,
-  instruction: string
 ): Promise<ExecuteResult> {
-  const res = await api.post('/execute', { session_id: sessionId, instruction, code })
-  return res.data
-}
-
-export async function generateCode(
-  sessionId: string,
-  instruction: string,
-  history?: Array<{ role: string; content: string }>
-): Promise<{ code: string }> {
-  const res = await api.post('/generate-code', { session_id: sessionId, instruction, history })
+  const res = await api.post('/execute', { session_id: sessionId, code })
   return res.data
 }
 
