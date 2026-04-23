@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    strictPort: true, // 端口被占用直接报错，而不是自动切换
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8000',

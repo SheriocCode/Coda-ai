@@ -1,8 +1,8 @@
 *.pyc
 __pycache__
 
-
-.env
+venv/
 
 # 用户数据目录
 workspace/
+.env
