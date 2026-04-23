@@ -44,6 +44,29 @@
       "dist/**/*",
       "electron/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "**/.*",
+          "!workspace/**",
+          "!workspace",
+          "!venv/**",
+          "!venv",
+          "!**/venv/**",
+          "!**/venv"
+        ]
+      },
+      {
+        "from": "resources/python-embed",
+        "to": "backend/python",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "win": {
       "target": [
         {

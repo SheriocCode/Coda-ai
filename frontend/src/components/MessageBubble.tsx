@@ -31,12 +31,14 @@ interface Props {
 }
 
 export function MessageBubble({ message, sessionId, onRunCodeNewMsg, onRunCodeInStep }: Props) {
+  const appIconUrl = './icon.png'
+
   // ---- Agent 加载状态 ----
   if (message.isLoading && message.isAgent) {
     return (
       <div className="message assistant">
         <div className="message-avatar">
-          <img src="/icon.png" alt="AI" className="message-avatar-icon" />
+          <img src={appIconUrl} alt="AI" className="message-avatar-icon" />
         </div>
         <div className="message-body">
           {message.agentSteps && message.agentSteps.length > 0 && (
@@ -69,7 +71,7 @@ export function MessageBubble({ message, sessionId, onRunCodeNewMsg, onRunCodeIn
     return (
       <div className="message assistant">
         <div className="message-avatar">
-          <img src="/icon.png" alt="AI" className="message-avatar-icon" />
+          <img src={appIconUrl} alt="AI" className="message-avatar-icon" />
         </div>
         <div className="message-body">
           <div className="loading-dots">
@@ -87,7 +89,7 @@ export function MessageBubble({ message, sessionId, onRunCodeNewMsg, onRunCodeIn
     <div className={`message ${isUser ? 'user' : 'assistant'}`}>
       {!isUser && (
         <div className="message-avatar">
-          <img src="/icon.png" alt="AI" className="message-avatar-icon" />
+          <img src={appIconUrl} alt="AI" className="message-avatar-icon" />
         </div>
       )}
 

@@ -1,10 +1,100 @@
 const { app, BrowserWindow, shell, ipcMain, Menu } = require('electron')
 const path = require('path')
 const net = require('net')
+const fs = require('fs')
+const { spawn } = require('child_process')
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 let mainWindow
+let backendProcess = null
+
+function getWindowIconPath() {
+  // 优先使用 ico（Windows 兼容性更好），并根据运行模式选择路径
+  const candidates = isDev
+    ? [
+        path.join(__dirname, '../public/icon.ico'),
+        path.join(__dirname, '../public/icon.png')
+      ]
+    : [
+        path.join(__dirname, '../dist/icon.ico'),
+        path.join(__dirname, '../dist/icon.png')
+      ]
+
+  const hit = candidates.find((p) => fs.existsSync(p))
+  if (!hit) {
+    console.warn('[App] 未找到窗口图标文件，候选路径:', candidates)
+    return undefined
+  }
+  return hit
+}
+
+function getBackendRuntimePaths() {
+  const backendDir = path.join(process.resourcesPath, 'backend')
+  const pythonExe = path.join(backendDir, 'python', 'python.exe')
+  const backendEntry = path.join(backendDir, 'main.py')
+  return { backendDir, pythonExe, backendEntry }
+}
+
+function startBackend() {
+  if (isDev || backendProcess) return
+
+  const { backendDir, pythonExe, backendEntry } = getBackendRuntimePaths()
+
+  if (!fs.existsSync(pythonExe)) {
+    console.warn('[Backend] 未找到嵌入式 Python:', pythonExe)
+    return
+  }
+  if (!fs.existsSync(backendEntry)) {
+    console.warn('[Backend] 未找到后端入口:', backendEntry)
+    return
+  }
+
+  try {
+    const bootstrap = [
+      'import runpy, sys',
+      `sys.path.insert(0, r"${backendDir.replace(/\\/g, '\\\\')}")`,
+      `runpy.run_path(r"${backendEntry.replace(/\\/g, '\\\\')}", run_name="__main__")`
+    ].join('; ')
+
+    backendProcess = spawn(pythonExe, ['-c', bootstrap], {
+      cwd: backendDir,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    backendProcess.stdout?.on('data', (data) => {
+      console.log('[Backend][stdout]', data.toString().trim())
+    })
+    backendProcess.stderr?.on('data', (data) => {
+      console.warn('[Backend][stderr]', data.toString().trim())
+    })
+    backendProcess.on('error', (err) => {
+      console.error('[Backend] 启动失败:', err)
+      backendProcess = null
+    })
+    backendProcess.on('exit', (code, signal) => {
+      console.log(`[Backend] 已退出 code=${code} signal=${signal}`)
+      backendProcess = null
+    })
+
+    console.log('[Backend] 启动命令:', pythonExe, backendEntry)
+  } catch (e) {
+    console.error('[Backend] 启动异常:', e)
+    backendProcess = null
+  }
+}
+
+function stopBackend() {
+  if (!backendProcess) return
+  try {
+    backendProcess.kill()
+  } catch (e) {
+    console.warn('[Backend] 停止异常:', e)
+  } finally {
+    backendProcess = null
+  }
+}
 
 // 检测后端是否已就绪
 function waitForBackend(port, maxRetries = 20, interval = 500) {
@@ -41,6 +131,8 @@ function waitForBackend(port, maxRetries = 20, interval = 500) {
 }
 
 function createWindow() {
+  const windowIcon = getWindowIconPath()
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -53,7 +145,7 @@ function createWindow() {
     },
     titleBarStyle: 'default',
     title: 'Coda',
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: windowIcon,
     backgroundColor: '#ffffff',
   })
 
@@ -81,6 +173,7 @@ Menu.setApplicationMenu(null)
 
 app.whenReady().then(async () => {
   if (!isDev) {
+    startBackend()
     // 生产模式：等待后端就绪再打开窗口
     try {
       console.log('[App] 等待后端就绪 (127.0.0.1:8000)...')
@@ -105,6 +198,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  stopBackend()
 })
 
 // IPC 处理

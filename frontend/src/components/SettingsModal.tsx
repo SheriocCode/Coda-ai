@@ -209,12 +209,14 @@ function ApiPanel({
 
 /* ── 关于面板 ── */
 function AboutPanel() {
+  const appIconUrl = './icon.png'
+
   return (
     <div className="settings-panel">
       {/* 项目信息卡片 */}
       <div className="about-hero">
         <div className="about-logo">
-          <img src="/icon.png" alt="Coda" />
+          <img src={appIconUrl} alt="Coda" />
         </div>
         <div className="about-info">
           <div className="about-name">Coda</div>
